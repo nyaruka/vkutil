@@ -100,7 +100,9 @@ func TestFair(t *testing.T) {
 	q.Pause(ctx, rc, "owner1") // no-op if already paused
 
 	assertvk.ZGetAll(t, rc, "test:active", map[string]float64{"owner1": 1, "owner2": 0})
-	assertvk.SMembers(t, rc, "test:paused", []string{"owner1"})
+	paused, err := q.Paused(ctx, rc)
+	assert.NoError(t, err)
+	assert.ElementsMatch(t, []string{"owner1"}, paused)
 	assertOwners([]string{"owner1", "owner2"})
 
 	assertPop("owner2", "task8")
@@ -111,7 +113,9 @@ func TestFair(t *testing.T) {
 	q.Resume(ctx, rc, "owner1") // no-op if already active
 
 	assertvk.ZGetAll(t, rc, "test:active", map[string]float64{"owner1": 1})
-	assertvk.SMembers(t, rc, "test:paused", []string{})
+	paused, err = q.Paused(ctx, rc)
+	assert.NoError(t, err)
+	assert.ElementsMatch(t, []string{}, paused)
 	assertOwners([]string{"owner1"})
 
 	assertPop("owner1", "task7")
@@ -126,7 +130,7 @@ func TestFair(t *testing.T) {
 	q.Push(ctx, rc, "owner2", false, []byte("task7"))
 
 	assertvk.LLen(t, rc, "test:q:owner1/0", 1)
-	_, err := rc.Do("DEL", "test:q:owner1/0")
+	_, err = rc.Do("DEL", "test:q:owner1/0")
 	assert.NoError(t, err)
 
 	assertPop("owner2", "task7")

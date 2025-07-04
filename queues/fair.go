@@ -12,12 +12,13 @@ import (
 //
 // foo:active - set of owners, scored by number of active tasks
 // foo:paused - set of paused owners
-// foo:<OWNER>/0 - e.g. list of tasks for <OWNER> with priority 0 (low)
-// foo:<OWNER>/1 - e.g. list of tasks for <OWNER> with priority 1 (high)
+// foo:q:<OWNER>/0 - e.g. list of tasks for <OWNER> with priority 0 (low)
+// foo:q:<OWNER>/1 - e.g. list of tasks for <OWNER> with priority 1 (high)
 type Fair struct {
 	keyBase string
 }
 
+// NewFair creates a new fair queue with the given key base.
 func NewFair(keyBase string) *Fair {
 	return &Fair{keyBase: keyBase}
 }
@@ -69,14 +70,35 @@ func (q *Fair) Done(ctx context.Context, rc redis.Conn, owner string) error {
 	return err
 }
 
+// Pause marks the given owner as paused, disabling processing of their tasks
 func (q *Fair) Pause(ctx context.Context, rc redis.Conn, owner string) error {
 	_, err := redis.DoContext(rc, ctx, "SADD", q.pausedKey(), owner)
 	return err
 }
 
+// Resume unmarks the given owner as paused, re-enabling processing of their tasks
 func (q *Fair) Resume(ctx context.Context, rc redis.Conn, owner string) error {
 	_, err := redis.DoContext(rc, ctx, "SREM", q.pausedKey(), owner)
 	return err
+}
+
+// Paused returns the list of paused owners
+func (q *Fair) Paused(ctx context.Context, rc redis.Conn) ([]string, error) {
+	owners, err := redis.Strings(redis.DoContext(rc, ctx, "SMEMBERS", q.pausedKey()))
+	if err != nil {
+		return nil, err
+	}
+
+	return owners, nil
+}
+
+func (q *Fair) Owners(ctx context.Context, rc redis.Conn) ([]string, error) {
+	owners, err := redis.Strings(redis.DoContext(rc, ctx, "ZRANGE", q.activeKey(), 0, -1))
+	if err != nil {
+		return nil, err
+	}
+
+	return owners, nil
 }
 
 // Size returns the number of queued tasks for the given owner.
@@ -91,15 +113,6 @@ func (q *Fair) Size(ctx context.Context, rc redis.Conn, owner string) (int, erro
 		return 0, err
 	}
 	return count0 + count1, nil
-}
-
-func (q *Fair) Owners(ctx context.Context, rc redis.Conn) ([]string, error) {
-	owners, err := redis.Strings(redis.DoContext(rc, ctx, "ZRANGE", q.activeKey(), 0, -1))
-	if err != nil {
-		return nil, err
-	}
-
-	return owners, nil
 }
 
 func (q *Fair) activeKey() string {
