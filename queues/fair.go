@@ -28,7 +28,9 @@ var scriptFairPush = redis.NewScript(3, luaFairPush)
 
 // Push adds the passed in task to our queue for execution
 func (q *Fair) Push(ctx context.Context, rc redis.Conn, owner string, priority bool, task []byte) error {
-	_, err := scriptFairPush.Do(rc, q.activeKey(), q.queueKey(owner, false), q.queueKey(owner, true), owner, priority, task)
+	queueKeys := q.queueKeys(owner)
+
+	_, err := scriptFairPush.Do(rc, q.activeKey(), queueKeys[0], queueKeys[1], owner, priority, task)
 	return err
 }
 
@@ -77,13 +79,18 @@ func (q *Fair) Resume(ctx context.Context, rc redis.Conn, owner string) error {
 	return err
 }
 
-//go:embed lua/fair_size.lua
-var luaFairSize string
-var scriptFairSize = redis.NewScript(1, luaFairSize)
-
-// Size returns the total number of queued tasks across all owners
-func (q *Fair) Size(ctx context.Context, rc redis.Conn) (int, error) {
-	return redis.Int(scriptFairSize.DoContext(ctx, rc, q.activeKey(), q.keyBase))
+// Size returns the number of queued tasks for the given owner.
+func (q *Fair) Size(ctx context.Context, rc redis.Conn, owner string) (int, error) {
+	queueKeys := q.queueKeys(owner)
+	count0, err := redis.Int(redis.DoContext(rc, ctx, "LLEN", queueKeys[0]))
+	if err != nil {
+		return 0, err
+	}
+	count1, err := redis.Int(redis.DoContext(rc, ctx, "LLEN", queueKeys[1]))
+	if err != nil {
+		return 0, err
+	}
+	return count0 + count1, nil
 }
 
 func (q *Fair) Owners(ctx context.Context, rc redis.Conn) ([]string, error) {
@@ -107,9 +114,9 @@ func (q *Fair) tempKey() string {
 	return fmt.Sprintf("%s:temp", q.keyBase)
 }
 
-func (q *Fair) queueKey(owner string, priority bool) string {
-	if priority {
-		return fmt.Sprintf("%s:q:%s/1", q.keyBase, owner)
+func (q *Fair) queueKeys(owner string) [2]string {
+	return [2]string{
+		fmt.Sprintf("%s:q:%s/0", q.keyBase, owner),
+		fmt.Sprintf("%s:q:%s/1", q.keyBase, owner),
 	}
-	return fmt.Sprintf("%s:q:%s/0", q.keyBase, owner)
 }

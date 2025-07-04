@@ -3,9 +3,7 @@ package queues_test
 import (
 	"context"
 	"testing"
-	"time"
 
-	"github.com/nyaruka/gocommon/dates"
 	"github.com/nyaruka/vkutil/assertvk"
 	"github.com/nyaruka/vkutil/queues"
 	"github.com/stretchr/testify/assert"
@@ -20,8 +18,6 @@ func TestFair(t *testing.T) {
 
 	defer assertvk.FlushDB()
 
-	dates.SetNowFunc(dates.NewSequentialNow(time.Date(2022, 1, 1, 12, 1, 2, 123456789, time.UTC), time.Second))
-
 	q := queues.NewFair("test")
 
 	assertPop := func(expectedOwner, expectedTask string) {
@@ -35,10 +31,10 @@ func TestFair(t *testing.T) {
 		}
 	}
 
-	assertSize := func(expecting int) {
-		size, err := q.Size(ctx, rc)
+	assertSize := func(owner string, expected int) {
+		size, err := q.Size(ctx, rc, owner)
 		assert.NoError(t, err)
-		assert.Equal(t, expecting, size)
+		assert.Equal(t, expected, size)
 	}
 
 	assertOwners := func(expected []string) {
@@ -47,7 +43,8 @@ func TestFair(t *testing.T) {
 		assert.ElementsMatch(t, expected, actual)
 	}
 
-	assertSize(0)
+	assertSize("owner1", 0)
+	assertSize("owner2", 0)
 
 	q.Push(ctx, rc, "owner1", false, []byte(`task1`))
 	q.Push(ctx, rc, "owner1", true, []byte(`task2`))
@@ -63,7 +60,8 @@ func TestFair(t *testing.T) {
 	assertvk.LGetAll(t, rc, "test:q:owner2/0", []string{`task3`})
 	assertvk.LGetAll(t, rc, "test:q:owner2/1", []string{`task5`})
 
-	assertSize(5)
+	assertSize("owner1", 3)
+	assertSize("owner2", 2)
 
 	assertPop("owner1", "task2") // because it's highest priority for owner 1
 	assertvk.ZGetAll(t, rc, "test:active", map[string]float64{"owner1": 1, "owner2": 0})
@@ -73,7 +71,8 @@ func TestFair(t *testing.T) {
 	assertvk.ZGetAll(t, rc, "test:active", map[string]float64{"owner1": 2, "owner2": 1})
 
 	assertOwners([]string{"owner1", "owner2"})
-	assertSize(2)
+	assertSize("owner1", 1)
+	assertSize("owner2", 1)
 
 	// mark task2 and task1 (owner1) as complete
 	q.Done(ctx, rc, "owner1")
@@ -85,7 +84,8 @@ func TestFair(t *testing.T) {
 	assertPop("owner2", "task3")
 	assertPop("", "") // no more tasks
 
-	assertSize(0)
+	assertSize("owner1", 0)
+	assertSize("owner2", 0)
 
 	assertvk.ZGetAll(t, rc, "test:active", map[string]float64{})
 
