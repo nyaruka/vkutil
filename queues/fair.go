@@ -104,15 +104,21 @@ func (q *Fair) Owners(ctx context.Context, rc redis.Conn) ([]string, error) {
 // Size returns the number of queued tasks for the given owner.
 func (q *Fair) Size(ctx context.Context, rc redis.Conn, owner string) (int, error) {
 	queueKeys := q.queueKeys(owner)
-	count0, err := redis.Int(redis.DoContext(rc, ctx, "LLEN", queueKeys[0]))
+
+	rc.Send("MULTI")
+	rc.Send("LLEN", queueKeys[0])
+	rc.Send("LLEN", queueKeys[1])
+	r, err := redis.Values(redis.DoContext(rc, ctx, "EXEC"))
 	if err != nil {
 		return 0, err
 	}
-	count1, err := redis.Int(redis.DoContext(rc, ctx, "LLEN", queueKeys[1]))
+
+	counts, err := redis.Ints(r, nil)
 	if err != nil {
 		return 0, err
 	}
-	return count0 + count1, nil
+
+	return counts[0] + counts[1], nil
 }
 
 func (q *Fair) activeKey() string {
