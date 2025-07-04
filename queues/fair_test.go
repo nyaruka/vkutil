@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/gomodule/redigo/redis"
 	"github.com/nyaruka/vkutil/assertvk"
 	"github.com/nyaruka/vkutil/queues"
 	"github.com/stretchr/testify/assert"
@@ -19,17 +20,6 @@ func TestFair(t *testing.T) {
 	defer assertvk.FlushDB()
 
 	q := queues.NewFair("test", 3)
-
-	assertPop := func(expectedOwner, expectedTask string) {
-		owner, task, err := q.Pop(ctx, rc)
-		require.NoError(t, err)
-		if expectedTask != "" {
-			assert.Equal(t, expectedOwner, owner)
-			assert.Equal(t, expectedTask, string(task))
-		} else {
-			assert.Nil(t, task)
-		}
-	}
 
 	assertSize := func(owner string, expected int) {
 		size, err := q.Size(ctx, rc, owner)
@@ -63,11 +53,11 @@ func TestFair(t *testing.T) {
 	assertSize("owner1", 3)
 	assertSize("owner2", 2)
 
-	assertPop("owner1", "task2") // because it's highest priority for owner 1
+	assertPop(t, q, rc, "owner1", "task2") // because it's highest priority for owner 1
 	assertvk.ZGetAll(t, rc, "test:active", map[string]float64{"owner1": 1, "owner2": 0})
-	assertPop("owner2", "task5") // because it's highest priority for owner 2
+	assertPop(t, q, rc, "owner2", "task5") // because it's highest priority for owner 2
 	assertvk.ZGetAll(t, rc, "test:active", map[string]float64{"owner1": 1, "owner2": 1})
-	assertPop("owner1", "task1")
+	assertPop(t, q, rc, "owner1", "task1")
 	assertvk.ZGetAll(t, rc, "test:active", map[string]float64{"owner1": 2, "owner2": 1})
 
 	assertOwners([]string{"owner1", "owner2"})
@@ -80,9 +70,9 @@ func TestFair(t *testing.T) {
 
 	assertvk.ZGetAll(t, rc, "test:active", map[string]float64{"owner1": 0, "owner2": 1})
 
-	assertPop("owner1", "task4")
-	assertPop("owner2", "task3")
-	assertPop("", "") // no more tasks
+	assertPop(t, q, rc, "owner1", "task4")
+	assertPop(t, q, rc, "owner2", "task3")
+	assertPop(t, q, rc, "", "") // no more tasks
 
 	assertSize("owner1", 0)
 	assertSize("owner2", 0)
@@ -94,7 +84,7 @@ func TestFair(t *testing.T) {
 	q.Push(ctx, rc, "owner2", false, []byte(`task8`))
 	q.Push(ctx, rc, "owner2", false, []byte(`task9`))
 
-	assertPop("owner1", "task6")
+	assertPop(t, q, rc, "owner1", "task6")
 
 	q.Pause(ctx, rc, "owner1")
 	q.Pause(ctx, rc, "owner1") // no-op if already paused
@@ -105,9 +95,9 @@ func TestFair(t *testing.T) {
 	assert.ElementsMatch(t, []string{"owner1"}, paused)
 	assertOwners([]string{"owner1", "owner2"})
 
-	assertPop("owner2", "task8")
-	assertPop("owner2", "task9")
-	assertPop("", "") // no more tasks
+	assertPop(t, q, rc, "owner2", "task8")
+	assertPop(t, q, rc, "owner2", "task9")
+	assertPop(t, q, rc, "", "") // no more tasks
 
 	q.Resume(ctx, rc, "owner1")
 	q.Resume(ctx, rc, "owner1") // no-op if already active
@@ -118,7 +108,7 @@ func TestFair(t *testing.T) {
 	assert.ElementsMatch(t, []string{}, paused)
 	assertOwners([]string{"owner1"})
 
-	assertPop("owner1", "task7")
+	assertPop(t, q, rc, "owner1", "task7")
 
 	q.Done(ctx, rc, "owner1")
 	q.Done(ctx, rc, "owner1")
@@ -133,8 +123,8 @@ func TestFair(t *testing.T) {
 	_, err = rc.Do("DEL", "test:q:owner1/0")
 	assert.NoError(t, err)
 
-	assertPop("owner2", "task7")
-	assertPop("", "")
+	assertPop(t, q, rc, "owner2", "task7")
+	assertPop(t, q, rc, "", "")
 
 	// if we somehow call done too many times, we never get negative workers
 	q.Push(ctx, rc, "owner1", false, []byte("task8"))
@@ -154,26 +144,27 @@ func TestFairMaxActivePerOwner(t *testing.T) {
 
 	q := queues.NewFair("test", 2)
 
-	assertPop := func(expectedOwner, expectedTask string) {
-		owner, task, err := q.Pop(ctx, rc)
-		require.NoError(t, err)
-		if expectedTask != "" {
-			assert.Equal(t, expectedOwner, owner)
-			assert.Equal(t, expectedTask, string(task))
-		} else {
-			assert.Nil(t, task)
-		}
-	}
-
 	q.Push(ctx, rc, "owner1", false, []byte(`task1`))
 	q.Push(ctx, rc, "owner1", true, []byte(`task2`))
 	q.Push(ctx, rc, "owner1", false, []byte(`task3`))
 
-	assertPop("owner1", "task2")
-	assertPop("owner1", "task1")
-	assertPop("", "") // owner1 has reached max active tasks
+	assertPop(t, q, rc, "owner1", "task2")
+	assertPop(t, q, rc, "owner1", "task1")
+	assertPop(t, q, rc, "", "") // owner1 has reached max active tasks
 
 	q.Done(ctx, rc, "owner1")
 
-	assertPop("owner1", "task3") // now we can pop task3
+	assertPop(t, q, rc, "owner1", "task3") // now we can pop task3
+}
+
+// assertPop is a helper function that asserts the result of a Pop operation
+func assertPop(t *testing.T, q *queues.Fair, rc redis.Conn, expectedOwner, expectedTask string) {
+	owner, task, err := q.Pop(context.Background(), rc)
+	require.NoError(t, err)
+	if expectedTask != "" {
+		assert.Equal(t, expectedOwner, owner)
+		assert.Equal(t, expectedTask, string(task))
+	} else {
+		assert.Nil(t, task)
+	}
 }

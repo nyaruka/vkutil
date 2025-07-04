@@ -6,6 +6,7 @@ local maxActivePerOwner = ARGV[2]
 
 -- subtract paused owners and store as new set
 redis.call("ZDIFFSTORE", tempKey, 2, activeKey, pausedKey)
+redis.call("EXPIRE", tempKey, 60)
 
 -- get the active owner with the least active tasks
 local result = redis.call("ZRANGEBYSCORE", tempKey, "-inf", "(" .. maxActivePerOwner, "LIMIT", 0, 1)
