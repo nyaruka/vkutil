@@ -1,14 +1,17 @@
-local activeKey = KEYS[1]
-local queue0Key = KEYS[2]
-local queue1Key = KEYS[3]
+local queuedKey = KEYS[1]
+local activeKey = KEYS[2]
+local queue0Key = KEYS[3]
+local queue1Key = KEYS[4]
 local owner = ARGV[1]
-local priority = ARGV[2]
+local priority = tonumber(ARGV[2])
 local task = ARGV[3]
 
-if priority == "0" then
-    redis.call("RPUSH", queue0Key, task)
+-- we could just increment queued count but counting the queue sizes makes it self-correcting
+local queuedCount = 0
+if priority == 0 then
+    queuedCount = redis.call("RPUSH", queue0Key, task) + redis.call("LLEN", queue1Key)
 else
-    redis.call("RPUSH", queue1Key, task)
+    queuedCount = redis.call("RPUSH", queue1Key, task) + redis.call("LLEN", queue0Key)
 end
 
-redis.call("ZINCRBY", activeKey, 0, owner) -- ensure exists in the active set
+redis.call("ZADD", queuedKey, queuedCount, owner)

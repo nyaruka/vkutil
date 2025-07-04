@@ -10,10 +10,15 @@ import (
 
 // Fair implements a fair queue where tasks are distributed evenly across owners.
 //
-// foo:active - set of owners, scored by number of active tasks
-// foo:paused - set of paused owners
-// foo:q:<OWNER>/0 - e.g. list of tasks for <OWNER> with priority 0 (low)
-// foo:q:<OWNER>/1 - e.g. list of tasks for <OWNER> with priority 1 (high)
+// A queue with base key "foo" and owners "o1" and "o2" will have the following keys:
+//   - foo:queued - set of owners scored by number of queued tasks
+//   - foo:active - set of owners scored by number of active tasks
+//   - foo:paused - set of paused owners
+//   - foo:temp - used internally
+//   - foo:q:o1/0 - e.g. list of tasks for o1 with priority 0 (low)
+//   - foo:q:o1/1 - e.g. list of tasks for o1 with priority 1 (high)
+//   - foo:q:o2/0 - e.g. list of tasks for o2 with priority 0 (low)
+//   - foo:q:o2/1 - e.g. list of tasks for o2 with priority 1 (high)
 type Fair struct {
 	keyBase           string
 	maxActivePerOwner int // max number of active tasks per owner
@@ -26,24 +31,24 @@ func NewFair(keyBase string, maxActivePerOwner int) *Fair {
 
 //go:embed lua/fair_push.lua
 var luaFairPush string
-var scriptFairPush = redis.NewScript(3, luaFairPush)
+var scriptFairPush = redis.NewScript(4, luaFairPush)
 
 // Push adds the passed in task to our queue for execution
 func (q *Fair) Push(ctx context.Context, rc redis.Conn, owner string, priority bool, task []byte) error {
 	queueKeys := q.queueKeys(owner)
 
-	_, err := scriptFairPush.Do(rc, q.activeKey(), queueKeys[0], queueKeys[1], owner, priority, task)
+	_, err := scriptFairPush.Do(rc, q.queuedKey(), q.activeKey(), queueKeys[0], queueKeys[1], owner, priority, task)
 	return err
 }
 
 //go:embed lua/fair_pop.lua
 var luaFairPop string
-var scriptFairPop = redis.NewScript(3, luaFairPop)
+var scriptFairPop = redis.NewScript(4, luaFairPop)
 
 // Pop pops the next task off our queue
 func (q *Fair) Pop(ctx context.Context, rc redis.Conn) (string, []byte, error) {
 	for {
-		values, err := redis.Strings(scriptFairPop.DoContext(ctx, rc, q.activeKey(), q.pausedKey(), q.tempKey(), q.keyBase, q.maxActivePerOwner))
+		values, err := redis.Strings(scriptFairPop.DoContext(ctx, rc, q.queuedKey(), q.activeKey(), q.pausedKey(), q.tempKey(), q.keyBase, q.maxActivePerOwner))
 		if err != nil {
 			return "", nil, err
 		}
@@ -83,7 +88,7 @@ func (q *Fair) Resume(ctx context.Context, rc redis.Conn, owner string) error {
 	return err
 }
 
-// Paused returns the list of paused owners
+// Paused returns the list of owners marked as paused
 func (q *Fair) Paused(ctx context.Context, rc redis.Conn) ([]string, error) {
 	owners, err := redis.Strings(redis.DoContext(rc, ctx, "SMEMBERS", q.pausedKey()))
 	if err != nil {
@@ -93,8 +98,9 @@ func (q *Fair) Paused(ctx context.Context, rc redis.Conn) ([]string, error) {
 	return owners, nil
 }
 
-func (q *Fair) Owners(ctx context.Context, rc redis.Conn) ([]string, error) {
-	owners, err := redis.Strings(redis.DoContext(rc, ctx, "ZRANGE", q.activeKey(), 0, -1))
+// Queued returns the list of owners with queued tasks
+func (q *Fair) Queued(ctx context.Context, rc redis.Conn) ([]string, error) {
+	owners, err := redis.Strings(redis.DoContext(rc, ctx, "ZRANGE", q.queuedKey(), 0, -1))
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +108,7 @@ func (q *Fair) Owners(ctx context.Context, rc redis.Conn) ([]string, error) {
 	return owners, nil
 }
 
-// Size returns the number of queued tasks for the given owner.
+// Size returns the number of queued tasks for the given owner
 func (q *Fair) Size(ctx context.Context, rc redis.Conn, owner string) (int, error) {
 	queueKeys := q.queueKeys(owner)
 
@@ -120,6 +126,10 @@ func (q *Fair) Size(ctx context.Context, rc redis.Conn, owner string) (int, erro
 	}
 
 	return counts[0] + counts[1], nil
+}
+
+func (q *Fair) queuedKey() string {
+	return fmt.Sprintf("%s:queued", q.keyBase)
 }
 
 func (q *Fair) activeKey() string {
