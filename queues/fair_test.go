@@ -18,7 +18,7 @@ func TestFair(t *testing.T) {
 
 	defer assertvk.FlushDB()
 
-	q := queues.NewFair("test")
+	q := queues.NewFair("test", 3)
 
 	assertPop := func(expectedOwner, expectedTask string) {
 		owner, task, err := q.Pop(ctx, rc)
@@ -142,4 +142,38 @@ func TestFair(t *testing.T) {
 	q.Done(ctx, rc, "owner1")
 
 	assertvk.ZGetAll(t, rc, "test:active", map[string]float64{"owner1": 0})
+}
+
+func TestFairMaxActivePerOwner(t *testing.T) {
+	ctx := context.Background()
+	rp := assertvk.TestDB()
+	rc := rp.Get()
+	defer rc.Close()
+
+	defer assertvk.FlushDB()
+
+	q := queues.NewFair("test", 2)
+
+	assertPop := func(expectedOwner, expectedTask string) {
+		owner, task, err := q.Pop(ctx, rc)
+		require.NoError(t, err)
+		if expectedTask != "" {
+			assert.Equal(t, expectedOwner, owner)
+			assert.Equal(t, expectedTask, string(task))
+		} else {
+			assert.Nil(t, task)
+		}
+	}
+
+	q.Push(ctx, rc, "owner1", false, []byte(`task1`))
+	q.Push(ctx, rc, "owner1", true, []byte(`task2`))
+	q.Push(ctx, rc, "owner1", false, []byte(`task3`))
+
+	assertPop("owner1", "task2")
+	assertPop("owner1", "task1")
+	assertPop("", "") // owner1 has reached max active tasks
+
+	q.Done(ctx, rc, "owner1")
+
+	assertPop("owner1", "task3") // now we can pop task3
 }

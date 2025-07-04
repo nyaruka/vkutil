@@ -2,12 +2,13 @@ local activeKey = KEYS[1]
 local pausedKey = KEYS[2]
 local tempKey = KEYS[3]
 local queueBase = ARGV[1]
+local maxActivePerOwner = ARGV[2]
 
 -- subtract paused owners and store as new set
 redis.call("ZDIFFSTORE", tempKey, 2, activeKey, pausedKey)
 
 -- get the active owner with the least active tasks
-local result = redis.call("ZRANGEBYSCORE", tempKey, "-inf", "+inf", "LIMIT", 0, 1)
+local result = redis.call("ZRANGEBYSCORE", tempKey, "-inf", "(" .. maxActivePerOwner, "LIMIT", 0, 1)
 
 -- nothing? return nothing
 local owner = result[1]

@@ -15,12 +15,13 @@ import (
 // foo:q:<OWNER>/0 - e.g. list of tasks for <OWNER> with priority 0 (low)
 // foo:q:<OWNER>/1 - e.g. list of tasks for <OWNER> with priority 1 (high)
 type Fair struct {
-	keyBase string
+	keyBase           string
+	maxActivePerOwner int // max number of active tasks per owner
 }
 
 // NewFair creates a new fair queue with the given key base.
-func NewFair(keyBase string) *Fair {
-	return &Fair{keyBase: keyBase}
+func NewFair(keyBase string, maxActivePerOwner int) *Fair {
+	return &Fair{keyBase: keyBase, maxActivePerOwner: maxActivePerOwner}
 }
 
 //go:embed lua/fair_push.lua
@@ -42,7 +43,7 @@ var scriptFairPop = redis.NewScript(3, luaFairPop)
 // Pop pops the next task off our queue
 func (q *Fair) Pop(ctx context.Context, rc redis.Conn) (string, []byte, error) {
 	for {
-		values, err := redis.Strings(scriptFairPop.DoContext(ctx, rc, q.activeKey(), q.pausedKey(), q.tempKey(), q.keyBase))
+		values, err := redis.Strings(scriptFairPop.DoContext(ctx, rc, q.activeKey(), q.pausedKey(), q.tempKey(), q.keyBase, q.maxActivePerOwner))
 		if err != nil {
 			return "", nil, err
 		}
