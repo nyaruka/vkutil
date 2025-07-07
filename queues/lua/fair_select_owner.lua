@@ -17,7 +17,7 @@ local result = redis.call("ZRANGEBYSCORE", tempKey, "-inf", "(" .. maxActivePerO
 -- nothing? return nothing
 local owner = result[1]
 if not owner then
-    return {"empty", ""}
+    return ""
 end
 
 -- decrement queued count for this owner
@@ -29,4 +29,4 @@ end
 -- increment active count for this owner to prevent races
 redis.call("ZINCRBY", activeKey, 1, owner)
 
-return {"ok", owner}
+return owner

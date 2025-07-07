@@ -88,18 +88,12 @@ func (q *Fair) Pop(ctx context.Context, rc redis.Conn) (string, []byte, error) {
 // This is the first step of the two-step pop process that avoids dynamic key usage.
 // Returns the selected owner or empty string if no owner is available.
 func (q *Fair) selectOwner(ctx context.Context, rc redis.Conn) (string, error) {
-	values, err := redis.Strings(scriptFairSelectOwner.DoContext(ctx, rc, q.queuedKey(), q.activeKey(), q.pausedKey(), q.tempKey(), q.maxActivePerOwner))
+	owner, err := redis.String(scriptFairSelectOwner.DoContext(ctx, rc, q.queuedKey(), q.activeKey(), q.pausedKey(), q.tempKey(), q.maxActivePerOwner))
 	if err != nil {
 		return "", err
 	}
 
-	if values[0] == "empty" {
-		return "", nil
-	} else if values[0] == "ok" {
-		return values[1], nil
-	}
-
-	panic("select owner script returned unexpected value: " + values[0])
+	return owner, nil
 }
 
 // popTask pops a task for the specified owner. This is the second step of the two-step pop process.
