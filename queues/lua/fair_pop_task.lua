@@ -12,10 +12,10 @@ end
 -- found a result?
 if result then
     -- we found a task, active count was already incremented in SelectOwner
-    return {"ok", result}
+    return result
 else
     -- no result found, completely remove this owner from active set
     redis.call("ZREM", activeKey, owner)
     
-    return {"empty", ""}
+    return ""
 end

@@ -102,18 +102,16 @@ func (q *Fair) selectOwner(ctx context.Context, rc redis.Conn) (string, error) {
 func (q *Fair) popTask(ctx context.Context, rc redis.Conn, owner string) ([]byte, error) {
 	queueKeys := q.queueKeys(owner)
 	
-	values, err := redis.Strings(scriptFairPopTask.DoContext(ctx, rc, q.activeKey(), queueKeys[0], queueKeys[1], owner))
+	result, err := redis.String(scriptFairPopTask.DoContext(ctx, rc, q.activeKey(), queueKeys[0], queueKeys[1], owner))
 	if err != nil {
 		return nil, err
 	}
 
-	if values[0] == "empty" {
+	if result == "" {
 		return nil, nil
-	} else if values[0] == "ok" {
-		return []byte(values[1]), nil
+	} else {
+		return []byte(result), nil
 	}
-
-	panic("pop task script returned unexpected value: " + values[0])
 }
 
 //go:embed lua/fair_done.lua
