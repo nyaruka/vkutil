@@ -36,7 +36,7 @@ func TestIntervalSeries(t *testing.T) {
 	setNow(time.Date(2021, 11, 18, 12, 7, 3, 234567, time.UTC))
 
 	// create a 5 minute x 5 based series
-	series1 := vkutil.NewIntervalSeries("foos", time.Minute*5, 5)
+	series1 := vkutil.NewIntervalSeries("foos", time.Minute*5, 5, false)
 	series1.Record(ctx, rc, "A", 2)
 
 	setNow(time.Date(2021, 11, 18, 12, 9, 3, 234567, time.UTC)) // move time forward but within same interval

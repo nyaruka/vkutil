@@ -48,12 +48,16 @@ func intervalTimestamp(t time.Time, interval time.Duration) string {
 	return t.Format("2006-01-02")
 }
 
-func intervalKeys(keyBase string, interval time.Duration, size int) []string {
+func intervalKeys(keyBase string, interval time.Duration, size int, hashTags bool) []string {
 	now := dates.Now()
 	keys := make([]string, size)
 	for i := range keys {
 		timestamp := intervalTimestamp(now.Add(-interval*time.Duration(i)), interval)
-		keys[i] = fmt.Sprintf("%s:%s", keyBase, timestamp)
+		if hashTags {
+			keys[i] = fmt.Sprintf("{%s}:%s", keyBase, timestamp)
+		} else {
+			keys[i] = fmt.Sprintf("%s:%s", keyBase, timestamp)
+		}
 	}
 	return keys
 }

@@ -26,7 +26,7 @@ func TestIntervalSet(t *testing.T) {
 	setNow(time.Date(2021, 11, 18, 12, 0, 3, 234567, time.UTC))
 
 	// create a 24-hour x 2 based set
-	set1 := vkutil.NewIntervalSet("foos", time.Hour*24, 2)
+	set1 := vkutil.NewIntervalSet("foos", time.Hour*24, 2, false)
 	assert.NoError(t, set1.Add(ctx, rc, "A"))
 	assert.NoError(t, set1.Add(ctx, rc, "B"))
 	assert.NoError(t, set1.Add(ctx, rc, "C"))
@@ -111,24 +111,24 @@ func TestIntervalSet(t *testing.T) {
 	assertNotIsMember(set1, "G")
 
 	// create a 5 minute x 3 based set
-	set2 := vkutil.NewIntervalSet("foos", time.Minute*5, 3)
+	set2 := vkutil.NewIntervalSet("foos", time.Minute*5, 3, true)
 	set2.Add(ctx, rc, "A")
 	set2.Add(ctx, rc, "B")
 
-	assertvk.SMembers(t, rc, "foos:2021-11-20T12:05", []string{"A", "B"})
-	assertvk.SMembers(t, rc, "foos:2021-11-20T12:00", []string{})
+	assertvk.SMembers(t, rc, "{foos}:2021-11-20T12:05", []string{"A", "B"})
+	assertvk.SMembers(t, rc, "{foos}:2021-11-20T12:00", []string{})
 
 	assertIsMember(set2, "A")
 	assertIsMember(set2, "B")
 	assertNotIsMember(set2, "C")
 
 	// create a 5 second x 2 based set
-	set3 := vkutil.NewIntervalSet("foos", time.Second*5, 2)
+	set3 := vkutil.NewIntervalSet("foos", time.Second*5, 2, true)
 	set3.Add(ctx, rc, "A")
 	set3.Add(ctx, rc, "B")
 
-	assertvk.SMembers(t, rc, "foos:2021-11-20T12:07:00", []string{"A", "B"})
-	assertvk.SMembers(t, rc, "foos:2021-11-20T12:06:55", []string{})
+	assertvk.SMembers(t, rc, "{foos}:2021-11-20T12:07:00", []string{"A", "B"})
+	assertvk.SMembers(t, rc, "{foos}:2021-11-20T12:06:55", []string{})
 
 	assertIsMember(set3, "A")
 	assertIsMember(set3, "B")
