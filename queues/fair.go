@@ -41,10 +41,6 @@ func (q *Fair) Push(ctx context.Context, rc redis.Conn, owner string, priority b
 	return err
 }
 
-//go:embed lua/fair_pop.lua
-var luaFairPop string
-var scriptFairPop = redis.NewScript(4, luaFairPop)
-
 //go:embed lua/fair_select_owner.lua
 var luaFairSelectOwner string
 var scriptFairSelectOwner = redis.NewScript(4, luaFairSelectOwner)
@@ -61,23 +57,23 @@ func (q *Fair) Pop(ctx context.Context, rc redis.Conn) (string, []byte, error) {
 		if err != nil {
 			return "", nil, err
 		}
-		
+
 		if owner == "" {
 			// No owner available
 			return "", nil, nil
 		}
-		
+
 		// Step 2: Pop a task for the selected owner
 		task, err := q.popTask(ctx, rc, owner)
 		if err != nil {
 			return "", nil, err
 		}
-		
+
 		if task != nil {
 			// Successfully got a task
 			return owner, task, nil
 		}
-		
+
 		// No task found for this owner, the popTask script already cleaned up the active count.
 		// Retry to select another owner.
 		continue
@@ -101,7 +97,7 @@ func (q *Fair) selectOwner(ctx context.Context, rc redis.Conn) (string, error) {
 // Returns the task data or nil if no task is available.
 func (q *Fair) popTask(ctx context.Context, rc redis.Conn, owner string) ([]byte, error) {
 	queueKeys := q.queueKeys(owner)
-	
+
 	result, err := redis.String(scriptFairPopTask.DoContext(ctx, rc, q.activeKey(), queueKeys[0], queueKeys[1], owner))
 	if err != nil {
 		return nil, err

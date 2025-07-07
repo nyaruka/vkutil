@@ -2,7 +2,12 @@ package queues_test
 
 import (
 	"context"
+	"fmt"
+	"math/rand"
+	"slices"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/gomodule/redigo/redis"
 	"github.com/nyaruka/vkutil/assertvk"
@@ -162,6 +167,122 @@ func TestFairMaxActivePerOwner(t *testing.T) {
 	q.Done(ctx, rc, "owner1")
 
 	assertPop(t, q, rc, "owner1", "task3") // now we can pop task3
+}
+
+func TestFairConcurrency(t *testing.T) {
+	ctx := context.Background()
+	rp := assertvk.TestDB()
+	rc := rp.Get()
+	defer rc.Close()
+
+	defer assertvk.FlushDB()
+
+	q := queues.NewFair("test", 3)
+
+	type ownerTask struct {
+		owner string
+		task  string
+	}
+
+	// Generate expected tasks from 3 different owners
+	expectedTasks := make([]*ownerTask, 100)
+	owners := []string{"owner1", "owner2", "owner3"}
+	for i := range expectedTasks {
+		expectedTasks[i] = &ownerTask{owner: owners[i%len(owners)], task: fmt.Sprintf("task%d", i+1)}
+	}
+
+	var wg sync.WaitGroup
+	var mutex sync.Mutex
+
+	unpushedTasks := slices.Clone(expectedTasks)
+	processedTasks := make([]*ownerTask, 0, len(expectedTasks))
+
+	getTaskToPush := func() *ownerTask {
+		mutex.Lock()
+		defer mutex.Unlock()
+
+		if len(unpushedTasks) == 0 {
+			return nil
+		}
+
+		task := unpushedTasks[0]
+		unpushedTasks = unpushedTasks[1:]
+		return task
+	}
+
+	recordTaskProcessed := func(owner, task string) {
+		mutex.Lock()
+		defer mutex.Unlock()
+
+		processedTasks = append(processedTasks, &ownerTask{owner: owner, task: task})
+	}
+
+	// Start 3 producers to push tasks concurrently
+	for i := range 3 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			rc := rp.Get()
+			defer rc.Close()
+
+			for {
+				ot := getTaskToPush()
+				if ot == nil {
+					return
+				} else {
+					err := q.Push(ctx, rc, ot.owner, false, []byte(ot.task))
+					assert.NoError(t, err, "Producer %d failed to push task %s for owner %s", i, ot.task, ot.owner)
+				}
+
+				time.Sleep(time.Duration(rand.Intn(50)) * time.Millisecond)
+			}
+		}()
+	}
+
+	// Start 3 consumers to pop tasks concurrently
+	for i := range 3 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			rc := rp.Get()
+			defer rc.Close()
+
+			for {
+				owner, task, err := q.Pop(ctx, rc)
+				assert.NoError(t, err, "Consumer %d failed to pop task", i)
+
+				if task != nil {
+					time.Sleep(time.Duration(rand.Intn(50)) * time.Millisecond)
+
+					err = q.Done(ctx, rc, owner)
+					assert.NoError(t, err, "Consumer %d failed to mark task done", i)
+
+					recordTaskProcessed(owner, string(task))
+				}
+				// Check if all tasks have been processed
+				mutex.Lock()
+				allDone := len(processedTasks) >= len(expectedTasks)
+				mutex.Unlock()
+
+				if allDone {
+					return
+				}
+			}
+		}()
+	}
+
+	wg.Wait() // Wait for all producers and consumers to complete
+
+	// can't guarantee order of processed tasks, but we can check that all expected tasks were processed
+	assert.ElementsMatch(t, expectedTasks, processedTasks)
+
+	assertvk.ZGetAll(t, rc, "test:queued", map[string]float64{})
+	assertvk.ZGetAll(t, rc, "test:active", map[string]float64{})
+	assertvk.LGetAll(t, rc, "test:q:owner1", []string{})
+	assertvk.LGetAll(t, rc, "test:q:owner2", []string{})
+	assertvk.LGetAll(t, rc, "test:q:owner3", []string{})
 }
 
 // assertPop is a helper function that asserts the result of a Pop operation
