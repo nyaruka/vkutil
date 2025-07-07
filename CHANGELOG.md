@@ -1,3 +1,9 @@
+v0.13.0 (2025-07-07)
+-------------------------
+ * More redis > valkey renaming
+ * For all multi-key structs, add option to put hashtags in keys
+ * Add implementation of fair queue in queues.Fair
+
 v0.12.0 (2025-06-12)
 -------------------------
  * Switch to valkey
