@@ -45,23 +45,72 @@ func (q *Fair) Push(ctx context.Context, rc redis.Conn, owner string, priority b
 var luaFairPop string
 var scriptFairPop = redis.NewScript(4, luaFairPop)
 
+//go:embed lua/fair_select_owner.lua
+var luaFairSelectOwner string
+var scriptFairSelectOwner = redis.NewScript(4, luaFairSelectOwner)
+
+//go:embed lua/fair_pop_task.lua
+var luaFairPopTask string
+var scriptFairPopTask = redis.NewScript(3, luaFairPopTask)
+
 // Pop pops the next task off our queue
 func (q *Fair) Pop(ctx context.Context, rc redis.Conn) (string, []byte, error) {
 	for {
-		values, err := redis.Strings(scriptFairPop.DoContext(ctx, rc, q.queuedKey(), q.activeKey(), q.pausedKey(), q.tempKey(), q.keyBase, q.maxActivePerOwner))
+		// Step 1: Select an owner to process
+		owner, err := q.selectOwner(ctx, rc)
 		if err != nil {
 			return "", nil, err
 		}
-
-		if values[0] == "empty" {
+		
+		if owner == "" {
+			// No owner available
 			return "", nil, nil
-		} else if values[0] == "retry" {
-			continue
-		} else if values[0] == "ok" {
-			return values[1], []byte(values[2]), err
 		}
+		
+		// Step 2: Pop a task for the selected owner
+		task, err := q.popTask(ctx, rc, owner)
+		if err != nil {
+			return "", nil, err
+		}
+		
+		if task != nil {
+			// Successfully got a task
+			return owner, task, nil
+		}
+		
+		// No task found for this owner, the popTask script already cleaned up the active count.
+		// Retry to select another owner.
+		continue
+	}
+}
 
-		panic("pop script returned unexpected value: " + values[0])
+// selectOwner selects the next owner to process tasks for and reserves a slot in the active set.
+// This is the first step of the two-step pop process that avoids dynamic key usage.
+// Returns the selected owner or empty string if no owner is available.
+func (q *Fair) selectOwner(ctx context.Context, rc redis.Conn) (string, error) {
+	owner, err := redis.String(scriptFairSelectOwner.DoContext(ctx, rc, q.queuedKey(), q.activeKey(), q.pausedKey(), q.tempKey(), q.maxActivePerOwner))
+	if err != nil {
+		return "", err
+	}
+
+	return owner, nil
+}
+
+// popTask pops a task for the specified owner. This is the second step of the two-step pop process.
+// If no task is found, it automatically decrements the active count to clean up the reservation.
+// Returns the task data or nil if no task is available.
+func (q *Fair) popTask(ctx context.Context, rc redis.Conn, owner string) ([]byte, error) {
+	queueKeys := q.queueKeys(owner)
+	
+	result, err := redis.String(scriptFairPopTask.DoContext(ctx, rc, q.activeKey(), queueKeys[0], queueKeys[1], owner))
+	if err != nil {
+		return nil, err
+	}
+
+	if result == "" {
+		return nil, nil
+	} else {
+		return []byte(result), nil
 	}
 }
 
