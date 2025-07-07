@@ -20,7 +20,7 @@ rp, err := vkutil.NewPool(
 Creating very large numbers of keys can hurt performance, but putting them all in a single set requires that they all have the same expiration. `IntervalSet` is a way to have multiple sets based on time intervals, accessible like a single set. You trade accuracy of expiry times for a significantly reduced key space. For example using 2 intervals of 24 hours:
 
 ```go
-set := vkutil.NewIntervalSet("foos", time.Hour*24, 2)
+set := vkutil.NewIntervalSet("foos", time.Hour*24, 2, false)
 set.Add(rc, "A")  // time is 2021-12-02T09:00
 ...
 set.Add(rc, "B")  // time is 2021-12-03T10:00
@@ -47,7 +47,7 @@ set.IsMember(rc, "D")   // false
 Same idea as `IntervalSet` but for hashes, and works well for caching values. For example using 2 intervals of 1 hour:
 
 ```go
-hash := vkutil.NewIntervalHash("foos", time.Hour, 2)
+hash := vkutil.NewIntervalHash("foos", time.Hour, 2, false)
 hash.Set(rc, "A", "1")  // time is 2021-12-02T09:10
 ...
 hash.Set(rc, "B", "2")  // time is 2021-12-02T10:15
@@ -76,7 +76,7 @@ When getting a value from an `IntervalHash` you're getting the newest value by l
 For example using 3 intervals of 1 hour:
 
 ```go
-series := vkutil.NewIntervalSeries("foos", time.Hour, 3)
+series := vkutil.NewIntervalSeries("foos", time.Hour, 3, false)
 series.Record(rc, "A", 1)  // time is 2021-12-02T09:10
 series.Record(rc, "A", 2)  // time is 2021-12-02T09:15
 ...

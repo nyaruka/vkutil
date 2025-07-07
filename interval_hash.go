@@ -14,11 +14,12 @@ type IntervalHash struct {
 	keyBase  string
 	interval time.Duration // e.g. 5 minutes
 	size     int           // number of intervals
+	hashTags bool          // whether to use hash tags in keys
 }
 
 // NewIntervalHash creates a new empty interval hash
-func NewIntervalHash(keyBase string, interval time.Duration, size int) *IntervalHash {
-	return &IntervalHash{keyBase: keyBase, interval: interval, size: size}
+func NewIntervalHash(keyBase string, interval time.Duration, size int, hashTags bool) *IntervalHash {
+	return &IntervalHash{keyBase: keyBase, interval: interval, size: size, hashTags: hashTags}
 }
 
 //go:embed lua/ihash_get.lua
@@ -88,5 +89,5 @@ func (h *IntervalHash) Clear(ctx context.Context, rc redis.Conn) error {
 }
 
 func (h *IntervalHash) keys() []string {
-	return intervalKeys(h.keyBase, h.interval, h.size)
+	return intervalKeys(h.keyBase, h.interval, h.size, h.hashTags)
 }

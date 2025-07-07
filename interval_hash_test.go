@@ -38,7 +38,7 @@ func TestIntervalHash(t *testing.T) {
 	}
 
 	// create a 24-hour x 2 based hash
-	hash1 := vkutil.NewIntervalHash("foos", time.Hour*24, 2)
+	hash1 := vkutil.NewIntervalHash("foos", time.Hour*24, 2, false)
 	assert.NoError(t, hash1.Set(ctx, rc, "A", "1"))
 	assert.NoError(t, hash1.Set(ctx, rc, "B", "2"))
 	assert.NoError(t, hash1.Set(ctx, rc, "C", "3"))
@@ -120,24 +120,24 @@ func TestIntervalHash(t *testing.T) {
 	assertGet(hash1, "D", "")
 
 	// create a 5 minute x 3 based hash
-	hash2 := vkutil.NewIntervalHash("foos", time.Minute*5, 3)
+	hash2 := vkutil.NewIntervalHash("foos", time.Minute*5, 3, true)
 	hash2.Set(ctx, rc, "A", "1")
 	hash2.Set(ctx, rc, "B", "2")
 
-	assertvk.HGetAll(t, rc, "foos:2021-11-20T12:05", map[string]string{"A": "1", "B": "2"})
-	assertvk.HGetAll(t, rc, "foos:2021-11-20T12:00", map[string]string{})
+	assertvk.HGetAll(t, rc, "{foos}:2021-11-20T12:05", map[string]string{"A": "1", "B": "2"})
+	assertvk.HGetAll(t, rc, "{foos}:2021-11-20T12:00", map[string]string{})
 
 	assertGet(hash2, "A", "1")
 	assertGet(hash2, "B", "2")
 	assertGet(hash2, "C", "")
 
 	// create a 5 second x 2 based set
-	hash3 := vkutil.NewIntervalHash("foos", time.Second*5, 2)
+	hash3 := vkutil.NewIntervalHash("foos", time.Second*5, 2, true)
 	hash3.Set(ctx, rc, "A", "1")
 	hash3.Set(ctx, rc, "B", "2")
 
-	assertvk.HGetAll(t, rc, "foos:2021-11-20T12:07:00", map[string]string{"A": "1", "B": "2"})
-	assertvk.HGetAll(t, rc, "foos:2021-11-20T12:06:55", map[string]string{})
+	assertvk.HGetAll(t, rc, "{foos}:2021-11-20T12:07:00", map[string]string{"A": "1", "B": "2"})
+	assertvk.HGetAll(t, rc, "{foos}:2021-11-20T12:06:55", map[string]string{})
 
 	assertGet(hash3, "A", "1")
 	assertGet(hash3, "B", "2")
