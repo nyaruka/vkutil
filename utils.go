@@ -5,14 +5,14 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/gomodule/redigo/redis"
+	valkey "github.com/gomodule/redigo/redis"
 	"github.com/nyaruka/gocommon/dates"
 	"github.com/nyaruka/gocommon/random"
 )
 
 // StringsWithScores parses an array reply which is alternating pairs of strings and scores (floats)
 func StringsWithScores(reply any, err error) ([]string, []float64, error) {
-	pairs, err := redis.Values(reply, err)
+	pairs, err := valkey.Values(reply, err)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/gomodule/redigo/redis"
+	valkey "github.com/gomodule/redigo/redis"
 )
 
 const (
@@ -13,15 +13,15 @@ const (
 	testDBIndex = 0
 )
 
-// TestDB returns a redis pool to our test database
-func TestDB() *redis.Pool {
-	return &redis.Pool{
-		Dial: func() (redis.Conn, error) {
-			conn, err := redis.Dial("tcp", getHostAddress())
+// TestDB returns a valkey pool to our test database
+func TestDB() *valkey.Pool {
+	return &valkey.Pool{
+		Dial: func() (valkey.Conn, error) {
+			conn, err := valkey.Dial("tcp", getHostAddress())
 			if err != nil {
 				return nil, err
 			}
-			_, err = redis.DoContext(conn, context.Background(), "SELECT", 0)
+			_, err = valkey.DoContext(conn, context.Background(), "SELECT", 0)
 			return conn, err
 		},
 	}
@@ -29,12 +29,12 @@ func TestDB() *redis.Pool {
 
 // FlushDB flushes the test database
 func FlushDB() {
-	rc, err := redis.Dial("tcp", getHostAddress())
+	rc, err := valkey.Dial("tcp", getHostAddress())
 	if err != nil {
 		panic(fmt.Sprintf("error connecting to valkey db: %s", err.Error()))
 	}
-	redis.DoContext(rc, context.Background(), "SELECT", testDBIndex)
-	_, err = redis.DoContext(rc, context.Background(), "FLUSHDB")
+	valkey.DoContext(rc, context.Background(), "SELECT", testDBIndex)
+	_, err = valkey.DoContext(rc, context.Background(), "FLUSHDB")
 	if err != nil {
 		panic(fmt.Sprintf("error flushing valkey db: %s", err.Error()))
 	}

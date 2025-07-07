@@ -10,15 +10,15 @@ import (
 
 func TestNewPool(t *testing.T) {
 	// check defaults
-	rp, err := vkutil.NewPool("valkey://valkey8:6379/15")
+	vp, err := vkutil.NewPool("valkey://valkey8:6379/15")
 	assert.NoError(t, err)
-	assert.Equal(t, 32, rp.MaxActive)
-	assert.Equal(t, 4, rp.MaxIdle)
-	assert.Equal(t, 180*time.Second, rp.IdleTimeout)
+	assert.Equal(t, 32, vp.MaxActive)
+	assert.Equal(t, 4, vp.MaxIdle)
+	assert.Equal(t, 180*time.Second, vp.IdleTimeout)
 
-	rp, err = vkutil.NewPool("valkey://valkey8:6379/15", vkutil.WithMaxActive(10), vkutil.WithMaxIdle(3), vkutil.WithIdleTimeout(time.Minute))
+	vp, err = vkutil.NewPool("valkey://valkey8:6379/15", vkutil.WithMaxActive(10), vkutil.WithMaxIdle(3), vkutil.WithIdleTimeout(time.Minute))
 	assert.NoError(t, err)
-	assert.Equal(t, 10, rp.MaxActive)
-	assert.Equal(t, 3, rp.MaxIdle)
-	assert.Equal(t, time.Minute, rp.IdleTimeout)
+	assert.Equal(t, 10, vp.MaxActive)
+	assert.Equal(t, 3, vp.MaxIdle)
+	assert.Equal(t, time.Minute, vp.IdleTimeout)
 }

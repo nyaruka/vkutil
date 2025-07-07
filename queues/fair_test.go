@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gomodule/redigo/redis"
+	valkey "github.com/gomodule/redigo/redis"
 	"github.com/nyaruka/vkutil/assertvk"
 	"github.com/nyaruka/vkutil/queues"
 	"github.com/stretchr/testify/assert"
@@ -18,22 +18,22 @@ import (
 
 func TestFair(t *testing.T) {
 	ctx := context.Background()
-	rp := assertvk.TestDB()
-	rc := rp.Get()
-	defer rc.Close()
+	vp := assertvk.TestDB()
+	vc := vp.Get()
+	defer vc.Close()
 
 	defer assertvk.FlushDB()
 
 	q := queues.NewFair("test", 3)
 
 	assertSize := func(owner string, expected int) {
-		size, err := q.Size(ctx, rc, owner)
+		size, err := q.Size(ctx, vc, owner)
 		assert.NoError(t, err)
 		assert.Equal(t, expected, size)
 	}
 
 	assertQueued := func(expected []string) {
-		actual, err := q.Queued(ctx, rc)
+		actual, err := q.Queued(ctx, vc)
 		assert.NoError(t, err)
 		assert.ElementsMatch(t, expected, actual)
 	}
@@ -41,139 +41,139 @@ func TestFair(t *testing.T) {
 	assertSize("owner1", 0)
 	assertSize("owner2", 0)
 
-	q.Push(ctx, rc, "owner1", false, []byte(`task1`))
-	q.Push(ctx, rc, "owner1", true, []byte(`task2`))
-	q.Push(ctx, rc, "owner2", false, []byte(`task3`))
-	q.Push(ctx, rc, "owner1", false, []byte(`task4`))
-	q.Push(ctx, rc, "owner2", true, []byte(`task5`))
+	q.Push(ctx, vc, "owner1", false, []byte(`task1`))
+	q.Push(ctx, vc, "owner1", true, []byte(`task2`))
+	q.Push(ctx, vc, "owner2", false, []byte(`task3`))
+	q.Push(ctx, vc, "owner1", false, []byte(`task4`))
+	q.Push(ctx, vc, "owner2", true, []byte(`task5`))
 
 	// nobody processing any tasks so no workers assigned in active set
-	assertvk.ZGetAll(t, rc, "{test}:queued", map[string]float64{"owner1": 3, "owner2": 2})
-	assertvk.ZGetAll(t, rc, "{test}:active", map[string]float64{})
-	assertvk.LGetAll(t, rc, "{test:q:owner1}/0", []string{`task1`, `task4`})
-	assertvk.LGetAll(t, rc, "{test:q:owner1}/1", []string{`task2`})
-	assertvk.LGetAll(t, rc, "{test:q:owner2}/0", []string{`task3`})
-	assertvk.LGetAll(t, rc, "{test:q:owner2}/1", []string{`task5`})
+	assertvk.ZGetAll(t, vc, "{test}:queued", map[string]float64{"owner1": 3, "owner2": 2})
+	assertvk.ZGetAll(t, vc, "{test}:active", map[string]float64{})
+	assertvk.LGetAll(t, vc, "{test:q:owner1}/0", []string{`task1`, `task4`})
+	assertvk.LGetAll(t, vc, "{test:q:owner1}/1", []string{`task2`})
+	assertvk.LGetAll(t, vc, "{test:q:owner2}/0", []string{`task3`})
+	assertvk.LGetAll(t, vc, "{test:q:owner2}/1", []string{`task5`})
 
 	assertSize("owner1", 3)
 	assertSize("owner2", 2)
 
-	assertPop(t, q, rc, "owner1", "task2") // because it's highest priority for owner 1
-	assertvk.ZGetAll(t, rc, "{test}:queued", map[string]float64{"owner1": 2, "owner2": 2})
-	assertvk.ZGetAll(t, rc, "{test}:active", map[string]float64{"owner1": 1})
+	assertPop(t, q, vc, "owner1", "task2") // because it's highest priority for owner 1
+	assertvk.ZGetAll(t, vc, "{test}:queued", map[string]float64{"owner1": 2, "owner2": 2})
+	assertvk.ZGetAll(t, vc, "{test}:active", map[string]float64{"owner1": 1})
 
-	assertPop(t, q, rc, "owner2", "task5") // because it's highest priority for owner 2
-	assertvk.ZGetAll(t, rc, "{test}:queued", map[string]float64{"owner1": 2, "owner2": 1})
-	assertvk.ZGetAll(t, rc, "{test}:active", map[string]float64{"owner1": 1, "owner2": 1})
+	assertPop(t, q, vc, "owner2", "task5") // because it's highest priority for owner 2
+	assertvk.ZGetAll(t, vc, "{test}:queued", map[string]float64{"owner1": 2, "owner2": 1})
+	assertvk.ZGetAll(t, vc, "{test}:active", map[string]float64{"owner1": 1, "owner2": 1})
 
-	assertPop(t, q, rc, "owner1", "task1")
-	assertvk.ZGetAll(t, rc, "{test}:queued", map[string]float64{"owner1": 1, "owner2": 1})
-	assertvk.ZGetAll(t, rc, "{test}:active", map[string]float64{"owner1": 2, "owner2": 1})
+	assertPop(t, q, vc, "owner1", "task1")
+	assertvk.ZGetAll(t, vc, "{test}:queued", map[string]float64{"owner1": 1, "owner2": 1})
+	assertvk.ZGetAll(t, vc, "{test}:active", map[string]float64{"owner1": 2, "owner2": 1})
 
 	assertQueued([]string{"owner1", "owner2"})
 	assertSize("owner1", 1)
 	assertSize("owner2", 1)
 
 	// mark task2 and task1 (owner1) as complete
-	q.Done(ctx, rc, "owner1")
-	q.Done(ctx, rc, "owner1")
+	q.Done(ctx, vc, "owner1")
+	q.Done(ctx, vc, "owner1")
 
-	assertvk.ZGetAll(t, rc, "{test}:queued", map[string]float64{"owner1": 1, "owner2": 1})
-	assertvk.ZGetAll(t, rc, "{test}:active", map[string]float64{"owner2": 1})
+	assertvk.ZGetAll(t, vc, "{test}:queued", map[string]float64{"owner1": 1, "owner2": 1})
+	assertvk.ZGetAll(t, vc, "{test}:active", map[string]float64{"owner2": 1})
 
-	assertPop(t, q, rc, "owner1", "task4")
-	assertPop(t, q, rc, "owner2", "task3")
-	assertPop(t, q, rc, "", "") // no more tasks
+	assertPop(t, q, vc, "owner1", "task4")
+	assertPop(t, q, vc, "owner2", "task3")
+	assertPop(t, q, vc, "", "") // no more tasks
 
 	assertSize("owner1", 0)
 	assertSize("owner2", 0)
 
-	assertvk.ZGetAll(t, rc, "{test}:queued", map[string]float64{})
-	assertvk.ZGetAll(t, rc, "{test}:active", map[string]float64{})
+	assertvk.ZGetAll(t, vc, "{test}:queued", map[string]float64{})
+	assertvk.ZGetAll(t, vc, "{test}:active", map[string]float64{})
 
-	q.Push(ctx, rc, "owner1", false, []byte(`task6`))
-	q.Push(ctx, rc, "owner1", false, []byte(`task7`))
-	q.Push(ctx, rc, "owner2", false, []byte(`task8`))
-	q.Push(ctx, rc, "owner2", false, []byte(`task9`))
+	q.Push(ctx, vc, "owner1", false, []byte(`task6`))
+	q.Push(ctx, vc, "owner1", false, []byte(`task7`))
+	q.Push(ctx, vc, "owner2", false, []byte(`task8`))
+	q.Push(ctx, vc, "owner2", false, []byte(`task9`))
 
-	assertPop(t, q, rc, "owner1", "task6")
+	assertPop(t, q, vc, "owner1", "task6")
 
-	q.Pause(ctx, rc, "owner1")
-	q.Pause(ctx, rc, "owner1") // no-op if already paused
+	q.Pause(ctx, vc, "owner1")
+	q.Pause(ctx, vc, "owner1") // no-op if already paused
 
-	assertvk.ZGetAll(t, rc, "{test}:active", map[string]float64{"owner1": 1})
-	paused, err := q.Paused(ctx, rc)
+	assertvk.ZGetAll(t, vc, "{test}:active", map[string]float64{"owner1": 1})
+	paused, err := q.Paused(ctx, vc)
 	assert.NoError(t, err)
 	assert.ElementsMatch(t, []string{"owner1"}, paused)
 	assertQueued([]string{"owner1", "owner2"})
 
-	assertPop(t, q, rc, "owner2", "task8")
-	assertPop(t, q, rc, "owner2", "task9")
-	assertPop(t, q, rc, "", "") // no more tasks
+	assertPop(t, q, vc, "owner2", "task8")
+	assertPop(t, q, vc, "owner2", "task9")
+	assertPop(t, q, vc, "", "") // no more tasks
 
-	q.Resume(ctx, rc, "owner1")
-	q.Resume(ctx, rc, "owner1") // no-op if already active
+	q.Resume(ctx, vc, "owner1")
+	q.Resume(ctx, vc, "owner1") // no-op if already active
 
-	assertvk.ZGetAll(t, rc, "{test}:active", map[string]float64{"owner1": 1})
-	paused, err = q.Paused(ctx, rc)
+	assertvk.ZGetAll(t, vc, "{test}:active", map[string]float64{"owner1": 1})
+	paused, err = q.Paused(ctx, vc)
 	assert.NoError(t, err)
 	assert.ElementsMatch(t, []string{}, paused)
 	assertQueued([]string{"owner1"})
 
-	assertPop(t, q, rc, "owner1", "task7")
+	assertPop(t, q, vc, "owner1", "task7")
 
-	q.Done(ctx, rc, "owner1")
-	q.Done(ctx, rc, "owner1")
-	q.Done(ctx, rc, "owner2")
-	q.Done(ctx, rc, "owner2")
+	q.Done(ctx, vc, "owner1")
+	q.Done(ctx, vc, "owner1")
+	q.Done(ctx, vc, "owner2")
+	q.Done(ctx, vc, "owner2")
 
 	// if we somehow get into a state where an owner is in the active set but doesn't have queued tasks, pop will retry
-	q.Push(ctx, rc, "owner1", false, []byte("task6"))
-	q.Push(ctx, rc, "owner2", false, []byte("task7"))
+	q.Push(ctx, vc, "owner1", false, []byte("task6"))
+	q.Push(ctx, vc, "owner2", false, []byte("task7"))
 
-	assertvk.LLen(t, rc, "{test:q:owner1}/0", 1)
-	_, err = rc.Do("DEL", "{test:q:owner1}/0")
+	assertvk.LLen(t, vc, "{test:q:owner1}/0", 1)
+	_, err = vc.Do("DEL", "{test:q:owner1}/0")
 	assert.NoError(t, err)
 
-	assertPop(t, q, rc, "owner2", "task7")
-	assertPop(t, q, rc, "", "")
+	assertPop(t, q, vc, "owner2", "task7")
+	assertPop(t, q, vc, "", "")
 
 	// if we somehow call done too many times, we never get negative workers
-	q.Push(ctx, rc, "owner1", false, []byte("task8"))
-	q.Done(ctx, rc, "owner1")
-	q.Done(ctx, rc, "owner1")
+	q.Push(ctx, vc, "owner1", false, []byte("task8"))
+	q.Done(ctx, vc, "owner1")
+	q.Done(ctx, vc, "owner1")
 
-	assertvk.ZGetAll(t, rc, "{test}:active", map[string]float64{})
+	assertvk.ZGetAll(t, vc, "{test}:active", map[string]float64{})
 }
 
 func TestFairMaxActivePerOwner(t *testing.T) {
 	ctx := context.Background()
-	rp := assertvk.TestDB()
-	rc := rp.Get()
-	defer rc.Close()
+	vp := assertvk.TestDB()
+	vc := vp.Get()
+	defer vc.Close()
 
 	defer assertvk.FlushDB()
 
 	q := queues.NewFair("test", 2)
 
-	q.Push(ctx, rc, "owner1", false, []byte(`task1`))
-	q.Push(ctx, rc, "owner1", true, []byte(`task2`))
-	q.Push(ctx, rc, "owner1", false, []byte(`task3`))
+	q.Push(ctx, vc, "owner1", false, []byte(`task1`))
+	q.Push(ctx, vc, "owner1", true, []byte(`task2`))
+	q.Push(ctx, vc, "owner1", false, []byte(`task3`))
 
-	assertPop(t, q, rc, "owner1", "task2")
-	assertPop(t, q, rc, "owner1", "task1")
-	assertPop(t, q, rc, "", "") // owner1 has reached max active tasks
+	assertPop(t, q, vc, "owner1", "task2")
+	assertPop(t, q, vc, "owner1", "task1")
+	assertPop(t, q, vc, "", "") // owner1 has reached max active tasks
 
-	q.Done(ctx, rc, "owner1")
+	q.Done(ctx, vc, "owner1")
 
-	assertPop(t, q, rc, "owner1", "task3") // now we can pop task3
+	assertPop(t, q, vc, "owner1", "task3") // now we can pop task3
 }
 
 func TestFairConcurrency(t *testing.T) {
 	ctx := context.Background()
-	rp := assertvk.TestDB()
-	rc := rp.Get()
-	defer rc.Close()
+	vp := assertvk.TestDB()
+	vc := vp.Get()
+	defer vc.Close()
 
 	defer assertvk.FlushDB()
 
@@ -223,15 +223,15 @@ func TestFairConcurrency(t *testing.T) {
 		go func() {
 			defer wg.Done()
 
-			rc := rp.Get()
-			defer rc.Close()
+			vc := vp.Get()
+			defer vc.Close()
 
 			for {
 				ot := getTaskToPush()
 				if ot == nil {
 					return
 				} else {
-					err := q.Push(ctx, rc, ot.owner, false, []byte(ot.task))
+					err := q.Push(ctx, vc, ot.owner, false, []byte(ot.task))
 					assert.NoError(t, err, "Producer %d failed to push task %s for owner %s", i, ot.task, ot.owner)
 				}
 
@@ -246,17 +246,17 @@ func TestFairConcurrency(t *testing.T) {
 		go func() {
 			defer wg.Done()
 
-			rc := rp.Get()
-			defer rc.Close()
+			vc := vp.Get()
+			defer vc.Close()
 
 			for {
-				owner, task, err := q.Pop(ctx, rc)
+				owner, task, err := q.Pop(ctx, vc)
 				assert.NoError(t, err, "Consumer %d failed to pop task", i)
 
 				if task != nil {
 					time.Sleep(time.Duration(rand.Intn(50)) * time.Millisecond)
 
-					err = q.Done(ctx, rc, owner)
+					err = q.Done(ctx, vc, owner)
 					assert.NoError(t, err, "Consumer %d failed to mark task done", i)
 
 					recordTaskProcessed(owner, string(task))
@@ -278,19 +278,19 @@ func TestFairConcurrency(t *testing.T) {
 	// can't guarantee order of processed tasks, but we can check that all expected tasks were processed
 	assert.ElementsMatch(t, expectedTasks, processedTasks)
 
-	assertvk.ZGetAll(t, rc, "{test}:queued", map[string]float64{})
-	assertvk.ZGetAll(t, rc, "{test}:active", map[string]float64{})
-	assertvk.LGetAll(t, rc, "{test:q:owner1}/0", []string{})
-	assertvk.LGetAll(t, rc, "{test:q:owner1}/1", []string{})
-	assertvk.LGetAll(t, rc, "{test:q:owner2}/0", []string{})
-	assertvk.LGetAll(t, rc, "{test:q:owner2}/1", []string{})
-	assertvk.LGetAll(t, rc, "{test:q:owner3}/0", []string{})
-	assertvk.LGetAll(t, rc, "{test:q:owner3}/1", []string{})
+	assertvk.ZGetAll(t, vc, "{test}:queued", map[string]float64{})
+	assertvk.ZGetAll(t, vc, "{test}:active", map[string]float64{})
+	assertvk.LGetAll(t, vc, "{test:q:owner1}/0", []string{})
+	assertvk.LGetAll(t, vc, "{test:q:owner1}/1", []string{})
+	assertvk.LGetAll(t, vc, "{test:q:owner2}/0", []string{})
+	assertvk.LGetAll(t, vc, "{test:q:owner2}/1", []string{})
+	assertvk.LGetAll(t, vc, "{test:q:owner3}/0", []string{})
+	assertvk.LGetAll(t, vc, "{test:q:owner3}/1", []string{})
 }
 
 // assertPop is a helper function that asserts the result of a Pop operation
-func assertPop(t *testing.T, q *queues.Fair, rc redis.Conn, expectedOwner, expectedTask string) {
-	owner, task, err := q.Pop(context.Background(), rc)
+func assertPop(t *testing.T, q *queues.Fair, vc valkey.Conn, expectedOwner, expectedTask string) {
+	owner, task, err := q.Pop(context.Background(), vc)
 	require.NoError(t, err)
 	if expectedTask != "" {
 		assert.Equal(t, expectedOwner, owner)

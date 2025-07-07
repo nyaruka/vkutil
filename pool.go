@@ -5,33 +5,33 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gomodule/redigo/redis"
+	valkey "github.com/gomodule/redigo/redis"
 )
 
 // WithMaxActive configures maximum number of concurrent connections to allow
-func WithMaxActive(v int) func(*redis.Pool) {
-	return func(rp *redis.Pool) { rp.MaxActive = v }
+func WithMaxActive(v int) func(*valkey.Pool) {
+	return func(vp *valkey.Pool) { vp.MaxActive = v }
 }
 
 // WithMaxIdle configures the maximum number of idle connections to keep
-func WithMaxIdle(v int) func(*redis.Pool) {
-	return func(rp *redis.Pool) { rp.MaxIdle = v }
+func WithMaxIdle(v int) func(*valkey.Pool) {
+	return func(vp *valkey.Pool) { vp.MaxIdle = v }
 }
 
 // WithIdleTimeout configures how long to wait before reaping a connection
-func WithIdleTimeout(v time.Duration) func(*redis.Pool) {
-	return func(rp *redis.Pool) { rp.IdleTimeout = v }
+func WithIdleTimeout(v time.Duration) func(*valkey.Pool) {
+	return func(vp *valkey.Pool) { vp.IdleTimeout = v }
 }
 
 // NewPool creates a new pool with the given options
-func NewPool(redisURL string, options ...func(*redis.Pool)) (*redis.Pool, error) {
+func NewPool(redisURL string, options ...func(*valkey.Pool)) (*valkey.Pool, error) {
 	parsedURL, err := url.Parse(redisURL)
 	if err != nil {
 		return nil, err
 	}
 
-	dial := func() (redis.Conn, error) {
-		conn, err := redis.Dial("tcp", parsedURL.Host)
+	dial := func() (valkey.Conn, error) {
+		conn, err := valkey.Dial("tcp", parsedURL.Host)
 		if err != nil {
 			return nil, err
 		}
@@ -52,7 +52,7 @@ func NewPool(redisURL string, options ...func(*redis.Pool)) (*redis.Pool, error)
 		return conn, err
 	}
 
-	rp := &redis.Pool{
+	vp := &valkey.Pool{
 		MaxActive:   32,
 		MaxIdle:     4,
 		IdleTimeout: 180 * time.Second,
@@ -61,15 +61,15 @@ func NewPool(redisURL string, options ...func(*redis.Pool)) (*redis.Pool, error)
 	}
 
 	for _, o := range options {
-		o(rp)
+		o(vp)
 	}
 
 	// test the connection
-	conn := rp.Get()
+	conn := vp.Get()
 	defer conn.Close()
 	if _, err = conn.Do("PING"); err != nil {
 		return nil, err
 	}
 
-	return rp, nil
+	return vp, nil
 }

@@ -122,14 +122,14 @@ cset.Members(rc)      // ["C", "D", "E"] / [3, 4, 5]
 The `assertvk` package contains several asserts useful for testing the state of a database.
 
 ```go
-rp := assertvk.TestDB()
-rc := rp.Get()
-defer rc.Close()
+vp := assertvk.TestDB()
+vc := vp.Get()
+defer vc.Close()
 
-assertvk.Keys(t, rc, "*", []string{"foo", "bar"})
-assertvk.Exists(t, rc, "foo")
-assertvk.NotExists(t, rc, "bar")
-assertvk.Get(t, rc, "foo", "123")
-assertvk.SCard(t, rc, "foo_set", 2)
-assertvk.SMembers(t, rc, "foo_set", []string{"123", "234"})
+assertvk.Keys(t, vc, "*", []string{"foo", "bar"})
+assertvk.Exists(t, vc, "foo")
+assertvk.NotExists(t, vc, "bar")
+assertvk.Get(t, vc, "foo", "123")
+assertvk.SCard(t, vc, "foo_set", 2)
+assertvk.SMembers(t, vc, "foo_set", []string{"123", "234"})
 ```

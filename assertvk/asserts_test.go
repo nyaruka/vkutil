@@ -4,58 +4,58 @@ import (
 	"context"
 	"testing"
 
-	"github.com/gomodule/redigo/redis"
+	valkey "github.com/gomodule/redigo/redis"
 	"github.com/nyaruka/vkutil/assertvk"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestAsserts(t *testing.T) {
 	ctx := context.Background()
-	rp := assertvk.TestDB()
-	rc := rp.Get()
-	defer rc.Close()
+	vp := assertvk.TestDB()
+	vc := vp.Get()
+	defer vc.Close()
 
 	defer assertvk.FlushDB()
 
-	redis.DoContext(rc, ctx, "SET", "mykey", "one")
+	valkey.DoContext(vc, ctx, "SET", "mykey", "one")
 
-	assert.True(t, assertvk.Exists(t, rc, "mykey"))
-	assert.True(t, assertvk.NotExists(t, rc, "mykey2"))
-	assert.True(t, assertvk.Get(t, rc, "mykey", "one"))
+	assert.True(t, assertvk.Exists(t, vc, "mykey"))
+	assert.True(t, assertvk.NotExists(t, vc, "mykey2"))
+	assert.True(t, assertvk.Get(t, vc, "mykey", "one"))
 
-	redis.DoContext(rc, ctx, "RPUSH", "mylist", "one")
-	redis.DoContext(rc, ctx, "RPUSH", "mylist", "two")
-	redis.DoContext(rc, ctx, "RPUSH", "mylist", "three")
+	valkey.DoContext(vc, ctx, "RPUSH", "mylist", "one")
+	valkey.DoContext(vc, ctx, "RPUSH", "mylist", "two")
+	valkey.DoContext(vc, ctx, "RPUSH", "mylist", "three")
 
-	assert.True(t, assertvk.LLen(t, rc, "mylist", 3))
-	assert.True(t, assertvk.LRange(t, rc, "mylist", 0, 1, []string{"one", "two"}))
-	assert.True(t, assertvk.LGetAll(t, rc, "mylist", []string{"one", "two", "three"}))
+	assert.True(t, assertvk.LLen(t, vc, "mylist", 3))
+	assert.True(t, assertvk.LRange(t, vc, "mylist", 0, 1, []string{"one", "two"}))
+	assert.True(t, assertvk.LGetAll(t, vc, "mylist", []string{"one", "two", "three"}))
 
-	redis.DoContext(rc, ctx, "SADD", "myset", "one")
-	redis.DoContext(rc, ctx, "SADD", "myset", "two")
-	redis.DoContext(rc, ctx, "SADD", "myset", "three")
+	valkey.DoContext(vc, ctx, "SADD", "myset", "one")
+	valkey.DoContext(vc, ctx, "SADD", "myset", "two")
+	valkey.DoContext(vc, ctx, "SADD", "myset", "three")
 
-	assert.True(t, assertvk.SCard(t, rc, "myset", 3))
-	assert.True(t, assertvk.SIsMember(t, rc, "myset", "two"))
-	assert.True(t, assertvk.SIsNotMember(t, rc, "myset", "four"))
-	assert.True(t, assertvk.SMembers(t, rc, "myset", []string{"two", "one", "three"}))
+	assert.True(t, assertvk.SCard(t, vc, "myset", 3))
+	assert.True(t, assertvk.SIsMember(t, vc, "myset", "two"))
+	assert.True(t, assertvk.SIsNotMember(t, vc, "myset", "four"))
+	assert.True(t, assertvk.SMembers(t, vc, "myset", []string{"two", "one", "three"}))
 
-	redis.DoContext(rc, ctx, "HSET", "myhash", "a", "one")
-	redis.DoContext(rc, ctx, "HSET", "myhash", "b", "two")
-	redis.DoContext(rc, ctx, "HSET", "myhash", "c", "three")
+	valkey.DoContext(vc, ctx, "HSET", "myhash", "a", "one")
+	valkey.DoContext(vc, ctx, "HSET", "myhash", "b", "two")
+	valkey.DoContext(vc, ctx, "HSET", "myhash", "c", "three")
 
-	assert.True(t, assertvk.HLen(t, rc, "myhash", 3))
-	assert.True(t, assertvk.HGet(t, rc, "myhash", "b", "two"))
-	assert.True(t, assertvk.HGetAll(t, rc, "myhash", map[string]string{"a": "one", "b": "two", "c": "three"}))
+	assert.True(t, assertvk.HLen(t, vc, "myhash", 3))
+	assert.True(t, assertvk.HGet(t, vc, "myhash", "b", "two"))
+	assert.True(t, assertvk.HGetAll(t, vc, "myhash", map[string]string{"a": "one", "b": "two", "c": "three"}))
 
-	redis.DoContext(rc, ctx, "ZADD", "myzset", 1, "one")
-	redis.DoContext(rc, ctx, "ZADD", "myzset", 2, "two")
-	redis.DoContext(rc, ctx, "ZADD", "myzset", 3, "three")
+	valkey.DoContext(vc, ctx, "ZADD", "myzset", 1, "one")
+	valkey.DoContext(vc, ctx, "ZADD", "myzset", 2, "two")
+	valkey.DoContext(vc, ctx, "ZADD", "myzset", 3, "three")
 
-	assert.True(t, assertvk.ZCard(t, rc, "myzset", 3))
-	assert.True(t, assertvk.ZScore(t, rc, "myzset", "one", 1))
-	assert.True(t, assertvk.ZScore(t, rc, "myzset", "two", 2))
-	assert.True(t, assertvk.ZScore(t, rc, "myzset", "three", 3))
-	assert.True(t, assertvk.ZRange(t, rc, "myzset", 0, 1, []string{"one", "two"}))
-	assert.True(t, assertvk.ZGetAll(t, rc, "myzset", map[string]float64{"one": 1, "two": 2, "three": 3}))
+	assert.True(t, assertvk.ZCard(t, vc, "myzset", 3))
+	assert.True(t, assertvk.ZScore(t, vc, "myzset", "one", 1))
+	assert.True(t, assertvk.ZScore(t, vc, "myzset", "two", 2))
+	assert.True(t, assertvk.ZScore(t, vc, "myzset", "three", 3))
+	assert.True(t, assertvk.ZRange(t, vc, "myzset", 0, 1, []string{"one", "two"}))
+	assert.True(t, assertvk.ZGetAll(t, vc, "myzset", map[string]float64{"one": 1, "two": 2, "three": 3}))
 }
