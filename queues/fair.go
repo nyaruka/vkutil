@@ -11,14 +11,14 @@ import (
 // Fair implements a fair queue where tasks are distributed evenly across owners.
 //
 // A queue with base key "foo" and owners "o1" and "o2" will have the following keys:
-//   - foo:queued - set of owners scored by number of queued tasks
-//   - foo:active - set of owners scored by number of active tasks
-//   - foo:paused - set of paused owners
-//   - foo:temp - used internally
-//   - foo:q:o1/0 - e.g. list of tasks for o1 with priority 0 (low)
-//   - foo:q:o1/1 - e.g. list of tasks for o1 with priority 1 (high)
-//   - foo:q:o2/0 - e.g. list of tasks for o2 with priority 0 (low)
-//   - foo:q:o2/1 - e.g. list of tasks for o2 with priority 1 (high)
+//   - {foo}:queued - set of owners scored by number of queued tasks
+//   - {foo}:active - set of owners scored by number of active tasks
+//   - {foo}:paused - set of paused owners
+//   - {foo}:temp - used internally
+//   - {foo:q:o1}/0 - e.g. list of tasks for o1 with priority 0 (low)
+//   - {foo:q:o1}/1 - e.g. list of tasks for o1 with priority 1 (high)
+//   - {foo:q:o2}/0 - e.g. list of tasks for o2 with priority 0 (low)
+//   - {foo:q:o2}/1 - e.g. list of tasks for o2 with priority 1 (high)
 type Fair struct {
 	keyBase           string
 	maxActivePerOwner int // max number of active tasks per owner
@@ -174,24 +174,24 @@ func (q *Fair) Size(ctx context.Context, rc redis.Conn, owner string) (int, erro
 }
 
 func (q *Fair) queuedKey() string {
-	return fmt.Sprintf("%s:queued", q.keyBase)
+	return fmt.Sprintf("{%s}:queued", q.keyBase)
 }
 
 func (q *Fair) activeKey() string {
-	return fmt.Sprintf("%s:active", q.keyBase)
+	return fmt.Sprintf("{%s}:active", q.keyBase)
 }
 
 func (q *Fair) pausedKey() string {
-	return fmt.Sprintf("%s:paused", q.keyBase)
+	return fmt.Sprintf("{%s}:paused", q.keyBase)
 }
 
 func (q *Fair) tempKey() string {
-	return fmt.Sprintf("%s:temp", q.keyBase)
+	return fmt.Sprintf("{%s}:temp", q.keyBase)
 }
 
 func (q *Fair) queueKeys(owner string) [2]string {
 	return [2]string{
-		fmt.Sprintf("%s:q:%s/0", q.keyBase, owner),
-		fmt.Sprintf("%s:q:%s/1", q.keyBase, owner),
+		fmt.Sprintf("{%s:q:%s}/0", q.keyBase, owner),
+		fmt.Sprintf("{%s:q:%s}/1", q.keyBase, owner),
 	}
 }

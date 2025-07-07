@@ -48,27 +48,27 @@ func TestFair(t *testing.T) {
 	q.Push(ctx, rc, "owner2", true, []byte(`task5`))
 
 	// nobody processing any tasks so no workers assigned in active set
-	assertvk.ZGetAll(t, rc, "test:queued", map[string]float64{"owner1": 3, "owner2": 2})
-	assertvk.ZGetAll(t, rc, "test:active", map[string]float64{})
-	assertvk.LGetAll(t, rc, "test:q:owner1/0", []string{`task1`, `task4`})
-	assertvk.LGetAll(t, rc, "test:q:owner1/1", []string{`task2`})
-	assertvk.LGetAll(t, rc, "test:q:owner2/0", []string{`task3`})
-	assertvk.LGetAll(t, rc, "test:q:owner2/1", []string{`task5`})
+	assertvk.ZGetAll(t, rc, "{test}:queued", map[string]float64{"owner1": 3, "owner2": 2})
+	assertvk.ZGetAll(t, rc, "{test}:active", map[string]float64{})
+	assertvk.LGetAll(t, rc, "{test:q:owner1}/0", []string{`task1`, `task4`})
+	assertvk.LGetAll(t, rc, "{test:q:owner1}/1", []string{`task2`})
+	assertvk.LGetAll(t, rc, "{test:q:owner2}/0", []string{`task3`})
+	assertvk.LGetAll(t, rc, "{test:q:owner2}/1", []string{`task5`})
 
 	assertSize("owner1", 3)
 	assertSize("owner2", 2)
 
 	assertPop(t, q, rc, "owner1", "task2") // because it's highest priority for owner 1
-	assertvk.ZGetAll(t, rc, "test:queued", map[string]float64{"owner1": 2, "owner2": 2})
-	assertvk.ZGetAll(t, rc, "test:active", map[string]float64{"owner1": 1})
+	assertvk.ZGetAll(t, rc, "{test}:queued", map[string]float64{"owner1": 2, "owner2": 2})
+	assertvk.ZGetAll(t, rc, "{test}:active", map[string]float64{"owner1": 1})
 
 	assertPop(t, q, rc, "owner2", "task5") // because it's highest priority for owner 2
-	assertvk.ZGetAll(t, rc, "test:queued", map[string]float64{"owner1": 2, "owner2": 1})
-	assertvk.ZGetAll(t, rc, "test:active", map[string]float64{"owner1": 1, "owner2": 1})
+	assertvk.ZGetAll(t, rc, "{test}:queued", map[string]float64{"owner1": 2, "owner2": 1})
+	assertvk.ZGetAll(t, rc, "{test}:active", map[string]float64{"owner1": 1, "owner2": 1})
 
 	assertPop(t, q, rc, "owner1", "task1")
-	assertvk.ZGetAll(t, rc, "test:queued", map[string]float64{"owner1": 1, "owner2": 1})
-	assertvk.ZGetAll(t, rc, "test:active", map[string]float64{"owner1": 2, "owner2": 1})
+	assertvk.ZGetAll(t, rc, "{test}:queued", map[string]float64{"owner1": 1, "owner2": 1})
+	assertvk.ZGetAll(t, rc, "{test}:active", map[string]float64{"owner1": 2, "owner2": 1})
 
 	assertQueued([]string{"owner1", "owner2"})
 	assertSize("owner1", 1)
@@ -78,8 +78,8 @@ func TestFair(t *testing.T) {
 	q.Done(ctx, rc, "owner1")
 	q.Done(ctx, rc, "owner1")
 
-	assertvk.ZGetAll(t, rc, "test:queued", map[string]float64{"owner1": 1, "owner2": 1})
-	assertvk.ZGetAll(t, rc, "test:active", map[string]float64{"owner2": 1})
+	assertvk.ZGetAll(t, rc, "{test}:queued", map[string]float64{"owner1": 1, "owner2": 1})
+	assertvk.ZGetAll(t, rc, "{test}:active", map[string]float64{"owner2": 1})
 
 	assertPop(t, q, rc, "owner1", "task4")
 	assertPop(t, q, rc, "owner2", "task3")
@@ -88,8 +88,8 @@ func TestFair(t *testing.T) {
 	assertSize("owner1", 0)
 	assertSize("owner2", 0)
 
-	assertvk.ZGetAll(t, rc, "test:queued", map[string]float64{})
-	assertvk.ZGetAll(t, rc, "test:active", map[string]float64{})
+	assertvk.ZGetAll(t, rc, "{test}:queued", map[string]float64{})
+	assertvk.ZGetAll(t, rc, "{test}:active", map[string]float64{})
 
 	q.Push(ctx, rc, "owner1", false, []byte(`task6`))
 	q.Push(ctx, rc, "owner1", false, []byte(`task7`))
@@ -101,7 +101,7 @@ func TestFair(t *testing.T) {
 	q.Pause(ctx, rc, "owner1")
 	q.Pause(ctx, rc, "owner1") // no-op if already paused
 
-	assertvk.ZGetAll(t, rc, "test:active", map[string]float64{"owner1": 1})
+	assertvk.ZGetAll(t, rc, "{test}:active", map[string]float64{"owner1": 1})
 	paused, err := q.Paused(ctx, rc)
 	assert.NoError(t, err)
 	assert.ElementsMatch(t, []string{"owner1"}, paused)
@@ -114,7 +114,7 @@ func TestFair(t *testing.T) {
 	q.Resume(ctx, rc, "owner1")
 	q.Resume(ctx, rc, "owner1") // no-op if already active
 
-	assertvk.ZGetAll(t, rc, "test:active", map[string]float64{"owner1": 1})
+	assertvk.ZGetAll(t, rc, "{test}:active", map[string]float64{"owner1": 1})
 	paused, err = q.Paused(ctx, rc)
 	assert.NoError(t, err)
 	assert.ElementsMatch(t, []string{}, paused)
@@ -131,8 +131,8 @@ func TestFair(t *testing.T) {
 	q.Push(ctx, rc, "owner1", false, []byte("task6"))
 	q.Push(ctx, rc, "owner2", false, []byte("task7"))
 
-	assertvk.LLen(t, rc, "test:q:owner1/0", 1)
-	_, err = rc.Do("DEL", "test:q:owner1/0")
+	assertvk.LLen(t, rc, "{test:q:owner1}/0", 1)
+	_, err = rc.Do("DEL", "{test:q:owner1}/0")
 	assert.NoError(t, err)
 
 	assertPop(t, q, rc, "owner2", "task7")
@@ -143,7 +143,7 @@ func TestFair(t *testing.T) {
 	q.Done(ctx, rc, "owner1")
 	q.Done(ctx, rc, "owner1")
 
-	assertvk.ZGetAll(t, rc, "test:active", map[string]float64{})
+	assertvk.ZGetAll(t, rc, "{test}:active", map[string]float64{})
 }
 
 func TestFairMaxActivePerOwner(t *testing.T) {
@@ -278,11 +278,14 @@ func TestFairConcurrency(t *testing.T) {
 	// can't guarantee order of processed tasks, but we can check that all expected tasks were processed
 	assert.ElementsMatch(t, expectedTasks, processedTasks)
 
-	assertvk.ZGetAll(t, rc, "test:queued", map[string]float64{})
-	assertvk.ZGetAll(t, rc, "test:active", map[string]float64{})
-	assertvk.LGetAll(t, rc, "test:q:owner1", []string{})
-	assertvk.LGetAll(t, rc, "test:q:owner2", []string{})
-	assertvk.LGetAll(t, rc, "test:q:owner3", []string{})
+	assertvk.ZGetAll(t, rc, "{test}:queued", map[string]float64{})
+	assertvk.ZGetAll(t, rc, "{test}:active", map[string]float64{})
+	assertvk.LGetAll(t, rc, "{test:q:owner1}/0", []string{})
+	assertvk.LGetAll(t, rc, "{test:q:owner1}/1", []string{})
+	assertvk.LGetAll(t, rc, "{test:q:owner2}/0", []string{})
+	assertvk.LGetAll(t, rc, "{test:q:owner2}/1", []string{})
+	assertvk.LGetAll(t, rc, "{test:q:owner3}/0", []string{})
+	assertvk.LGetAll(t, rc, "{test:q:owner3}/1", []string{})
 }
 
 // assertPop is a helper function that asserts the result of a Pop operation
