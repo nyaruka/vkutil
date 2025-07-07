@@ -29,12 +29,14 @@ func TestDB() *valkey.Pool {
 
 // FlushDB flushes the test database
 func FlushDB() {
-	rc, err := valkey.Dial("tcp", getHostAddress())
+	rp, err := valkey.Dial("tcp", getHostAddress())
 	if err != nil {
 		panic(fmt.Sprintf("error connecting to valkey db: %s", err.Error()))
 	}
-	valkey.DoContext(rc, context.Background(), "SELECT", testDBIndex)
-	_, err = valkey.DoContext(rc, context.Background(), "FLUSHDB")
+
+	valkey.DoContext(rp, context.Background(), "SELECT", testDBIndex)
+
+	_, err = valkey.DoContext(rp, context.Background(), "FLUSHDB")
 	if err != nil {
 		panic(fmt.Sprintf("error flushing valkey db: %s", err.Error()))
 	}
