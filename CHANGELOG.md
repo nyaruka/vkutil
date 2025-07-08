@@ -1,3 +1,7 @@
+v0.15.0 (2025-07-08)
+-------------------------
+ * Remove :q from owner specific queue keys as it's not needed
+
 v0.14.0 (2025-07-08)
 -------------------------
  * Remove support for not using hashtags
