@@ -2,6 +2,12 @@
 
 A go library of [Valkey](https://valkey.io) utilities built on the [redigo](github.com/gomodule/redigo) client library.
 
+> [!IMPORTANT]
+> Because this library is built on [redigo](github.com/gomodule/redigo) it doesn't support cluster mode. However care 
+> has been taken to ensure this is possible in future by 1) not dynamically constructing keys in LUA scripts and 
+> 2) using [hashtags](https://valkey.io/topics/cluster-spec/) to ensure that keys that are accessed together would hash 
+> to the same hash slot.
+
 ## NewPool
 
 Simplifies creating a new connection pool, with optional auth, and tests that the connection works:
@@ -20,18 +26,18 @@ vp, err := vkutil.NewPool(
 Creating very large numbers of keys can hurt performance, but putting them all in a single set requires that they all have the same expiration. `IntervalSet` is a way to have multiple sets based on time intervals, accessible like a single set. You trade accuracy of expiry times for a significantly reduced key space. For example using 2 intervals of 24 hours:
 
 ```go
-set := vkutil.NewIntervalSet("foos", time.Hour*24, 2, false)
+set := vkutil.NewIntervalSet("foos", time.Hour*24, 2)
 set.Add(vc, "A")  // time is 2021-12-02T09:00
 ...
 set.Add(vc, "B")  // time is 2021-12-03T10:00
 set.Add(vc, "C")  // time is 2021-12-03T11:00
 ```
 
-Creates 2 sets like:
+Creates 2 sets as follows:
 
 ```
-foos:2021-12-02 => {"A"}       // expires at 2021-12-04T09:00
-foos:2021-12-03 => {"B", "C"}  // expires at 2021-12-05T11:00
+{foos}:2021-12-02 => {"A"}       // expires at 2021-12-04T09:00
+{foos}:2021-12-03 => {"B", "C"}  // expires at 2021-12-05T11:00
 ```
 
 But can be accessed like a single set:
@@ -47,7 +53,7 @@ set.IsMember(vc, "D")   // false
 Same idea as `IntervalSet` but for hashes, and works well for caching values. For example using 2 intervals of 1 hour:
 
 ```go
-hash := vkutil.NewIntervalHash("foos", time.Hour, 2, false)
+hash := vkutil.NewIntervalHash("foos", time.Hour, 2)
 hash.Set(vc, "A", "1")  // time is 2021-12-02T09:10
 ...
 hash.Set(vc, "B", "2")  // time is 2021-12-02T10:15
@@ -76,7 +82,7 @@ When getting a value from an `IntervalHash` you're getting the newest value by l
 For example using 3 intervals of 1 hour:
 
 ```go
-series := vkutil.NewIntervalSeries("foos", time.Hour, 3, false)
+series := vkutil.NewIntervalSeries("foos", time.Hour, 3)
 series.Record(vc, "A", 1)  // time is 2021-12-02T09:10
 series.Record(vc, "A", 2)  // time is 2021-12-02T09:15
 ...
