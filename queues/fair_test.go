@@ -50,10 +50,10 @@ func TestFair(t *testing.T) {
 	// nobody processing any tasks so no workers assigned in active set
 	assertvk.ZGetAll(t, vc, "{test}:queued", map[string]float64{"owner1": 3, "owner2": 2})
 	assertvk.ZGetAll(t, vc, "{test}:active", map[string]float64{})
-	assertvk.LGetAll(t, vc, "{test:q:owner1}/0", []string{`task1`, `task4`})
-	assertvk.LGetAll(t, vc, "{test:q:owner1}/1", []string{`task2`})
-	assertvk.LGetAll(t, vc, "{test:q:owner2}/0", []string{`task3`})
-	assertvk.LGetAll(t, vc, "{test:q:owner2}/1", []string{`task5`})
+	assertvk.LGetAll(t, vc, "{test:owner1}/0", []string{`task1`, `task4`})
+	assertvk.LGetAll(t, vc, "{test:owner1}/1", []string{`task2`})
+	assertvk.LGetAll(t, vc, "{test:owner2}/0", []string{`task3`})
+	assertvk.LGetAll(t, vc, "{test:owner2}/1", []string{`task5`})
 
 	assertSize("owner1", 3)
 	assertSize("owner2", 2)
@@ -131,8 +131,8 @@ func TestFair(t *testing.T) {
 	q.Push(ctx, vc, "owner1", false, []byte("task6"))
 	q.Push(ctx, vc, "owner2", false, []byte("task7"))
 
-	assertvk.LLen(t, vc, "{test:q:owner1}/0", 1)
-	_, err = vc.Do("DEL", "{test:q:owner1}/0")
+	assertvk.LLen(t, vc, "{test:owner1}/0", 1)
+	_, err = vc.Do("DEL", "{test:owner1}/0")
 	assert.NoError(t, err)
 
 	assertPop(t, q, vc, "owner2", "task7")
@@ -280,12 +280,12 @@ func TestFairConcurrency(t *testing.T) {
 
 	assertvk.ZGetAll(t, vc, "{test}:queued", map[string]float64{})
 	assertvk.ZGetAll(t, vc, "{test}:active", map[string]float64{})
-	assertvk.LGetAll(t, vc, "{test:q:owner1}/0", []string{})
-	assertvk.LGetAll(t, vc, "{test:q:owner1}/1", []string{})
-	assertvk.LGetAll(t, vc, "{test:q:owner2}/0", []string{})
-	assertvk.LGetAll(t, vc, "{test:q:owner2}/1", []string{})
-	assertvk.LGetAll(t, vc, "{test:q:owner3}/0", []string{})
-	assertvk.LGetAll(t, vc, "{test:q:owner3}/1", []string{})
+	assertvk.LGetAll(t, vc, "{test:owner1}/0", []string{})
+	assertvk.LGetAll(t, vc, "{test:owner1}/1", []string{})
+	assertvk.LGetAll(t, vc, "{test:owner2}/0", []string{})
+	assertvk.LGetAll(t, vc, "{test:owner2}/1", []string{})
+	assertvk.LGetAll(t, vc, "{test:owner3}/0", []string{})
+	assertvk.LGetAll(t, vc, "{test:owner3}/1", []string{})
 }
 
 // assertPop is a helper function that asserts the result of a Pop operation
