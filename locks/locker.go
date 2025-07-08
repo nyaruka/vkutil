@@ -1,4 +1,4 @@
-package vkutil
+package locks
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"time"
 
 	valkey "github.com/gomodule/redigo/redis"
+	"github.com/nyaruka/vkutil"
 )
 
 // Locker is a lock implementation where grabbing returns a lock value and that value must be
@@ -25,7 +26,7 @@ func NewLocker(key string, expiration time.Duration) *Locker {
 // It will retry every second until the retry period has ended, returning empty string if not
 // acquired in that time.
 func (l *Locker) Grab(ctx context.Context, vp *valkey.Pool, retry time.Duration) (string, error) {
-	value := RandomBase64(10)                  // generate our lock value
+	value := vkutil.RandomBase64(10)           // generate our lock value
 	expires := int(l.expiration / time.Second) // convert our expiration to seconds
 
 	start := time.Now()

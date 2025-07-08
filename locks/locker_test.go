@@ -1,12 +1,12 @@
-package vkutil_test
+package locks_test
 
 import (
 	"context"
 	"testing"
 	"time"
 
-	"github.com/nyaruka/vkutil"
 	"github.com/nyaruka/vkutil/assertvk"
+	"github.com/nyaruka/vkutil/locks"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -18,7 +18,7 @@ func TestLocker(t *testing.T) {
 
 	defer assertvk.FlushDB()
 
-	locker := vkutil.NewLocker("test", time.Second*5)
+	locker := locks.NewLocker("test", time.Second*5)
 
 	isLocked, err := locker.IsLocked(ctx, vp)
 	assert.NoError(t, err)

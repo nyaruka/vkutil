@@ -103,6 +103,8 @@ series.Get(ctx, vc, "C")   // [0, 0, 0]
 ### Fair
 
 ```go
+import "github.com/nyaruka/vkutil/queues"
+
 queue := queues.NewFair("jobs", 10)
 queue.Push(ctx, vc, "owner1", true, []byte(`{...}`))
 queue.Push(ctx, vc, "owner2", false, []byte(`{...}`))
@@ -116,7 +118,9 @@ queue.Done(ctx, vc, owner)
 ### Locker
 
 ```go
-locker := vkutil.NewLocker("mylock", time.Minute)
+import "github.com/nyaruka/vkutil/locks"
+
+locker := locks.NewLocker("mylock", time.Minute)
 lock, err := locker.Grab(ctx, vp, 10 * time.Second)
 ...
 locker.Release(ctx, vc, lock)
