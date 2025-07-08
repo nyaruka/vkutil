@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/nyaruka/gocommon/dates"
-	vkutil "github.com/nyaruka/vkutil"
+	"github.com/nyaruka/vkutil"
 	"github.com/nyaruka/vkutil/assertvk"
 	"github.com/stretchr/testify/assert"
 )
@@ -36,7 +36,7 @@ func TestIntervalSeries(t *testing.T) {
 	setNow(time.Date(2021, 11, 18, 12, 7, 3, 234567, time.UTC))
 
 	// create a 5 minute x 5 based series
-	series1 := vkutil.NewIntervalSeries("foos", time.Minute*5, 5, false)
+	series1 := vkutil.NewIntervalSeries("foos", time.Minute*5, 5)
 	series1.Record(ctx, vc, "A", 2)
 
 	setNow(time.Date(2021, 11, 18, 12, 9, 3, 234567, time.UTC)) // move time forward but within same interval
@@ -44,7 +44,7 @@ func TestIntervalSeries(t *testing.T) {
 	series1.Record(ctx, vc, "A", 7)
 	series1.Record(ctx, vc, "B", 4)
 
-	assertvk.HGetAll(t, vc, "foos:2021-11-18T12:05", map[string]string{"A": "9", "B": "4"})
+	assertvk.HGetAll(t, vc, "{foos}:2021-11-18T12:05", map[string]string{"A": "9", "B": "4"})
 
 	assertGet(series1, "A", []int64{9, 0, 0, 0, 0})
 	assertGet(series1, "B", []int64{4, 0, 0, 0, 0})
@@ -58,8 +58,8 @@ func TestIntervalSeries(t *testing.T) {
 	series1.Record(ctx, vc, "A", 3)
 	series1.Record(ctx, vc, "B", 2)
 
-	assertvk.HGetAll(t, vc, "foos:2021-11-18T12:10", map[string]string{"A": "3", "B": "2"})
-	assertvk.HGetAll(t, vc, "foos:2021-11-18T12:05", map[string]string{"A": "9", "B": "4"})
+	assertvk.HGetAll(t, vc, "{foos}:2021-11-18T12:10", map[string]string{"A": "3", "B": "2"})
+	assertvk.HGetAll(t, vc, "{foos}:2021-11-18T12:05", map[string]string{"A": "9", "B": "4"})
 
 	assertGet(series1, "A", []int64{3, 9, 0, 0, 0})
 	assertGet(series1, "B", []int64{2, 4, 0, 0, 0})
@@ -73,11 +73,11 @@ func TestIntervalSeries(t *testing.T) {
 	series1.Record(ctx, vc, "A", 10)
 	series1.Record(ctx, vc, "B", 1)
 
-	assertvk.HGetAll(t, vc, "foos:2021-11-18T12:25", map[string]string{"A": "10", "B": "1"})
-	assertvk.HGetAll(t, vc, "foos:2021-11-18T12:20", map[string]string{})
-	assertvk.HGetAll(t, vc, "foos:2021-11-18T12:15", map[string]string{})
-	assertvk.HGetAll(t, vc, "foos:2021-11-18T12:10", map[string]string{"A": "3", "B": "2"})
-	assertvk.HGetAll(t, vc, "foos:2021-11-18T12:05", map[string]string{"A": "9", "B": "4"})
+	assertvk.HGetAll(t, vc, "{foos}:2021-11-18T12:25", map[string]string{"A": "10", "B": "1"})
+	assertvk.HGetAll(t, vc, "{foos}:2021-11-18T12:20", map[string]string{})
+	assertvk.HGetAll(t, vc, "{foos}:2021-11-18T12:15", map[string]string{})
+	assertvk.HGetAll(t, vc, "{foos}:2021-11-18T12:10", map[string]string{"A": "3", "B": "2"})
+	assertvk.HGetAll(t, vc, "{foos}:2021-11-18T12:05", map[string]string{"A": "9", "B": "4"})
 
 	assertGet(series1, "A", []int64{10, 0, 0, 3, 9})
 	assertGet(series1, "B", []int64{1, 0, 0, 2, 4})
@@ -90,11 +90,11 @@ func TestIntervalSeries(t *testing.T) {
 
 	series1.Record(ctx, vc, "A", 1)
 
-	assertvk.HGetAll(t, vc, "foos:2021-11-18T12:30", map[string]string{"A": "1"})
-	assertvk.HGetAll(t, vc, "foos:2021-11-18T12:25", map[string]string{"A": "10", "B": "1"})
-	assertvk.HGetAll(t, vc, "foos:2021-11-18T12:20", map[string]string{})
-	assertvk.HGetAll(t, vc, "foos:2021-11-18T12:15", map[string]string{})
-	assertvk.HGetAll(t, vc, "foos:2021-11-18T12:10", map[string]string{"A": "3", "B": "2"})
+	assertvk.HGetAll(t, vc, "{foos}:2021-11-18T12:30", map[string]string{"A": "1"})
+	assertvk.HGetAll(t, vc, "{foos}:2021-11-18T12:25", map[string]string{"A": "10", "B": "1"})
+	assertvk.HGetAll(t, vc, "{foos}:2021-11-18T12:20", map[string]string{})
+	assertvk.HGetAll(t, vc, "{foos}:2021-11-18T12:15", map[string]string{})
+	assertvk.HGetAll(t, vc, "{foos}:2021-11-18T12:10", map[string]string{"A": "3", "B": "2"})
 
 	assertGet(series1, "A", []int64{1, 10, 0, 0, 3})
 	assertGet(series1, "B", []int64{0, 1, 0, 0, 2})

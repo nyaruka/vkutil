@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	vkutil "github.com/nyaruka/vkutil"
+	"github.com/nyaruka/vkutil"
 	"github.com/nyaruka/vkutil/assertvk"
 	"github.com/stretchr/testify/assert"
 )

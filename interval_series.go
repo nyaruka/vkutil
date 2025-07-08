@@ -13,12 +13,11 @@ type IntervalSeries struct {
 	keyBase  string
 	interval time.Duration // e.g. 5 minutes
 	size     int           // number of intervals
-	hashTags bool          // whether to use hash tags in keys
 }
 
 // NewIntervalSeries creates a new empty series
-func NewIntervalSeries(keyBase string, interval time.Duration, size int, hashTags bool) *IntervalSeries {
-	return &IntervalSeries{keyBase: keyBase, interval: interval, size: size, hashTags: hashTags}
+func NewIntervalSeries(keyBase string, interval time.Duration, size int) *IntervalSeries {
+	return &IntervalSeries{keyBase: keyBase, interval: interval, size: size}
 }
 
 // Record increments the value of field by value in the current interval
@@ -58,5 +57,5 @@ func (s *IntervalSeries) Total(ctx context.Context, vc valkey.Conn, field string
 }
 
 func (s *IntervalSeries) keys() []string {
-	return intervalKeys(s.keyBase, s.interval, s.size, s.hashTags)
+	return intervalKeys(s.keyBase, s.interval, s.size)
 }

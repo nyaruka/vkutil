@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/nyaruka/gocommon/dates"
-	vkutil "github.com/nyaruka/vkutil"
+	"github.com/nyaruka/vkutil"
 	"github.com/nyaruka/vkutil/assertvk"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -26,13 +26,13 @@ func TestIntervalSet(t *testing.T) {
 	setNow(time.Date(2021, 11, 18, 12, 0, 3, 234567, time.UTC))
 
 	// create a 24-hour x 2 based set
-	set1 := vkutil.NewIntervalSet("foos", time.Hour*24, 2, false)
+	set1 := vkutil.NewIntervalSet("foos", time.Hour*24, 2)
 	assert.NoError(t, set1.Add(ctx, vc, "A"))
 	assert.NoError(t, set1.Add(ctx, vc, "B"))
 	assert.NoError(t, set1.Add(ctx, vc, "C"))
 
-	assertvk.SMembers(t, vc, "foos:2021-11-18", []string{"A", "B", "C"})
-	assertvk.SMembers(t, vc, "foos:2021-11-17", []string{})
+	assertvk.SMembers(t, vc, "{foos}:2021-11-18", []string{"A", "B", "C"})
+	assertvk.SMembers(t, vc, "{foos}:2021-11-17", []string{})
 
 	assertIsMember := func(s *vkutil.IntervalSet, v string) {
 		contains, err := s.IsMember(ctx, vc, v)
@@ -56,9 +56,9 @@ func TestIntervalSet(t *testing.T) {
 	set1.Add(ctx, vc, "D")
 	set1.Add(ctx, vc, "E")
 
-	assertvk.SMembers(t, vc, "foos:2021-11-19", []string{"D", "E"})
-	assertvk.SMembers(t, vc, "foos:2021-11-18", []string{"A", "B", "C"})
-	assertvk.SMembers(t, vc, "foos:2021-11-17", []string{})
+	assertvk.SMembers(t, vc, "{foos}:2021-11-19", []string{"D", "E"})
+	assertvk.SMembers(t, vc, "{foos}:2021-11-18", []string{"A", "B", "C"})
+	assertvk.SMembers(t, vc, "{foos}:2021-11-17", []string{})
 
 	assertIsMember(set1, "A")
 	assertIsMember(set1, "B")
@@ -73,10 +73,10 @@ func TestIntervalSet(t *testing.T) {
 	set1.Add(ctx, vc, "F")
 	set1.Add(ctx, vc, "G")
 
-	assertvk.SMembers(t, vc, "foos:2021-11-20", []string{"F", "G"})
-	assertvk.SMembers(t, vc, "foos:2021-11-19", []string{"D", "E"})
-	assertvk.SMembers(t, vc, "foos:2021-11-18", []string{"A", "B", "C"})
-	assertvk.SMembers(t, vc, "foos:2021-11-17", []string{})
+	assertvk.SMembers(t, vc, "{foos}:2021-11-20", []string{"F", "G"})
+	assertvk.SMembers(t, vc, "{foos}:2021-11-19", []string{"D", "E"})
+	assertvk.SMembers(t, vc, "{foos}:2021-11-18", []string{"A", "B", "C"})
+	assertvk.SMembers(t, vc, "{foos}:2021-11-17", []string{})
 
 	assertNotIsMember(set1, "A") // too old
 	assertNotIsMember(set1, "B") // too old
@@ -91,8 +91,8 @@ func TestIntervalSet(t *testing.T) {
 	err = set1.Rem(ctx, vc, "E") // from yesterday
 	require.NoError(t, err)
 
-	assertvk.SMembers(t, vc, "foos:2021-11-20", []string{"G"})
-	assertvk.SMembers(t, vc, "foos:2021-11-19", []string{"D"})
+	assertvk.SMembers(t, vc, "{foos}:2021-11-20", []string{"G"})
+	assertvk.SMembers(t, vc, "{foos}:2021-11-19", []string{"D"})
 
 	assertIsMember(set1, "D")
 	assertNotIsMember(set1, "E")
@@ -102,8 +102,8 @@ func TestIntervalSet(t *testing.T) {
 	err = set1.Clear(ctx, vc)
 	require.NoError(t, err)
 
-	assertvk.SMembers(t, vc, "foos:2021-11-20", []string{})
-	assertvk.SMembers(t, vc, "foos:2021-11-19", []string{})
+	assertvk.SMembers(t, vc, "{foos}:2021-11-20", []string{})
+	assertvk.SMembers(t, vc, "{foos}:2021-11-19", []string{})
 
 	assertNotIsMember(set1, "D")
 	assertNotIsMember(set1, "E")
@@ -111,7 +111,7 @@ func TestIntervalSet(t *testing.T) {
 	assertNotIsMember(set1, "G")
 
 	// create a 5 minute x 3 based set
-	set2 := vkutil.NewIntervalSet("foos", time.Minute*5, 3, true)
+	set2 := vkutil.NewIntervalSet("foos", time.Minute*5, 3)
 	set2.Add(ctx, vc, "A")
 	set2.Add(ctx, vc, "B")
 
@@ -123,7 +123,7 @@ func TestIntervalSet(t *testing.T) {
 	assertNotIsMember(set2, "C")
 
 	// create a 5 second x 2 based set
-	set3 := vkutil.NewIntervalSet("foos", time.Second*5, 2, true)
+	set3 := vkutil.NewIntervalSet("foos", time.Second*5, 2)
 	set3.Add(ctx, vc, "A")
 	set3.Add(ctx, vc, "B")
 

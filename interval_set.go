@@ -13,12 +13,11 @@ type IntervalSet struct {
 	keyBase  string
 	interval time.Duration // e.g. 5 minutes
 	size     int           // number of intervals
-	hashTags bool          // whether to use hash tags in keys
 }
 
 // NewIntervalSet creates a new empty interval set
-func NewIntervalSet(keyBase string, interval time.Duration, size int, hashTags bool) *IntervalSet {
-	return &IntervalSet{keyBase: keyBase, interval: interval, size: size, hashTags: hashTags}
+func NewIntervalSet(keyBase string, interval time.Duration, size int) *IntervalSet {
+	return &IntervalSet{keyBase: keyBase, interval: interval, size: size}
 }
 
 //go:embed lua/iset_ismember.lua
@@ -64,5 +63,5 @@ func (s *IntervalSet) Clear(ctx context.Context, vc valkey.Conn) error {
 }
 
 func (s *IntervalSet) keys() []string {
-	return intervalKeys(s.keyBase, s.interval, s.size, s.hashTags)
+	return intervalKeys(s.keyBase, s.interval, s.size)
 }
