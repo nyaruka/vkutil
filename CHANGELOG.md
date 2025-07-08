@@ -1,3 +1,7 @@
+v0.16.0 (2025-07-08)
+-------------------------
+ * Move Locker into new locks package
+
 v0.15.0 (2025-07-08)
 -------------------------
  * Remove :q from owner specific queue keys as it's not needed
