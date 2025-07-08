@@ -1,3 +1,8 @@
+v0.14.0 (2025-07-08)
+-------------------------
+ * Remove support for not using hashtags
+ * Add notice to README about cluster mode
+
 v0.13.0 (2025-07-07)
 -------------------------
  * More redis > valkey renaming
