@@ -10,15 +10,15 @@ import (
 
 // Fair implements a fair queue where tasks are distributed evenly across owners.
 //
-// A queue with base key "foo" and owners "o1" and "o2" will have the following keys:
+// A queue with base key "foo" and owners "owner1" and "owner2" will have the following keys:
 //   - {foo}:queued - set of owners scored by number of queued tasks
 //   - {foo}:active - set of owners scored by number of active tasks
 //   - {foo}:paused - set of paused owners
 //   - {foo}:temp - used internally
-//   - {foo:o1}/0 - e.g. list of tasks for o1 with priority 0 (low)
-//   - {foo:o1}/1 - e.g. list of tasks for o1 with priority 1 (high)
-//   - {foo:o2}/0 - e.g. list of tasks for o2 with priority 0 (low)
-//   - {foo:o2}/1 - e.g. list of tasks for o2 with priority 1 (high)
+//   - {foo}:o:owner1/0 - e.g. list of tasks for owner1 with priority 0 (low)
+//   - {foo}:o:owner1/1 - e.g. list of tasks for owner1 with priority 1 (high)
+//   - {foo}:o:owner2/0 - e.g. list of tasks for owner2 with priority 0 (low)
+//   - {foo}:o:owner2/1 - e.g. list of tasks for owner2 with priority 1 (high)
 type Fair struct {
 	keyBase           string
 	maxActivePerOwner int // max number of active tasks per owner
@@ -157,7 +157,7 @@ func (q *Fair) tempKey() string {
 
 func (q *Fair) queueKeys(owner string) [2]string {
 	return [2]string{
-		fmt.Sprintf("{%s:%s}/0", q.keyBase, owner),
-		fmt.Sprintf("{%s:%s}/1", q.keyBase, owner),
+		fmt.Sprintf("{%s}:o:%s/0", q.keyBase, owner),
+		fmt.Sprintf("{%s}:o:%s/1", q.keyBase, owner),
 	}
 }

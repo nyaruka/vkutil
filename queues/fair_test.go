@@ -31,7 +31,7 @@ func TestFair(t *testing.T) {
 	q := queues.NewFair("test", 3)
 
 	assertQueued := func(expected map[string]int) {
-		actualStrings, err := valkey.StringMap(valkey.DoContext(vc, context.Background(), "ZRANGE", "{test}:queued", 0, -1, "WITHSCORES"))
+		actualStrings, err := valkey.StringMap(vc.Do("ZRANGE", "{test}:queued", 0, -1, "WITHSCORES"))
 		require.NoError(t, err)
 
 		actual := make(map[string]int, len(actualStrings))
@@ -49,7 +49,7 @@ func TestFair(t *testing.T) {
 	}
 
 	assertActive := func(expected map[string]int) {
-		actualStrings, err := valkey.StringMap(valkey.DoContext(vc, context.Background(), "ZRANGE", "{test}:active", 0, -1, "WITHSCORES"))
+		actualStrings, err := valkey.StringMap(vc.Do("ZRANGE", "{test}:active", 0, -1, "WITHSCORES"))
 		require.NoError(t, err)
 
 		actual := make(map[string]int, len(actualStrings))
@@ -62,9 +62,9 @@ func TestFair(t *testing.T) {
 	}
 
 	assertTasks := func(owner string, expected0, expected1 []string) {
-		actual0, err := valkey.Strings(valkey.DoContext(vc, context.Background(), "LRANGE", "{test:"+owner+"}/0", 0, -1))
+		actual0, err := valkey.Strings(vc.Do("LRANGE", "{test}:o:"+owner+"/0", 0, -1))
 		require.NoError(t, err)
-		actual1, err := valkey.Strings(valkey.DoContext(vc, context.Background(), "LRANGE", "{test:"+owner+"}/1", 0, -1))
+		actual1, err := valkey.Strings(vc.Do("LRANGE", "{test}:o:"+owner+"/1", 0, -1))
 		require.NoError(t, err)
 
 		assert.Equal(t, expected0, actual0, "priority 0 tasks mismatch")
@@ -185,8 +185,8 @@ func TestFair(t *testing.T) {
 	assertQueued(map[string]int{"owner1": 1, "owner2": 1})
 	assertActive(map[string]int{})
 
-	assertvk.LLen(t, vc, "{test:owner1}/0", 1)
-	_, err = vc.Do("DEL", "{test:owner1}/0")
+	assertvk.LLen(t, vc, "{test}:o:owner1/0", 1)
+	_, err = vc.Do("DEL", "{test}:o:owner1/0")
 	assert.NoError(t, err)
 
 	assertPop(t, q, vc, "owner2", "task7")
@@ -333,8 +333,8 @@ func TestFairConcurrency(t *testing.T) {
 	assertvk.ZGetAll(t, vc, "{test}:active", map[string]float64{})
 
 	for i := range 5 {
-		assertvk.LGetAll(t, vc, fmt.Sprintf("{test:owner%d}/0", i+1), []string{})
-		assertvk.LGetAll(t, vc, fmt.Sprintf("{test:owner%d}/1", i+1), []string{})
+		assertvk.LGetAll(t, vc, fmt.Sprintf("{test}:o:owner%d/0", i+1), []string{})
+		assertvk.LGetAll(t, vc, fmt.Sprintf("{test}:o:owner%d/1", i+1), []string{})
 	}
 }
 
