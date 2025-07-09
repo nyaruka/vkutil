@@ -19,6 +19,9 @@ import (
 //   - {foo}:o:owner1/1 - e.g. list of tasks for owner1 with priority 1 (high)
 //   - {foo}:o:owner2/0 - e.g. list of tasks for owner2 with priority 0 (low)
 //   - {foo}:o:owner2/1 - e.g. list of tasks for owner2 with priority 1 (high)
+//
+// Note: it would be nice if owner queues could use distict hash tags and so live on different nodes in a cluster, but
+// our push and pop scripts require atomic changes to the queued/active sets and the task lists.
 type Fair struct {
 	keyBase           string
 	maxActivePerOwner int // max number of active tasks per owner

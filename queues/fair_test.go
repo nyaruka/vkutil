@@ -340,7 +340,8 @@ func TestFairConcurrency(t *testing.T) {
 
 // assertPop is a helper function that asserts the result of a Pop operation
 func assertPop(t *testing.T, q *queues.Fair, vc valkey.Conn, expectedOwner, expectedTask string) {
-	owner, task, err := q.Pop(context.Background(), vc)
+	ctx := context.Background()
+	owner, task, err := q.Pop(ctx, vc)
 	require.NoError(t, err)
 	if expectedTask != "" {
 		assert.Equal(t, expectedOwner, owner)
