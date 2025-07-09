@@ -12,6 +12,8 @@ import (
 	"time"
 
 	valkey "github.com/gomodule/redigo/redis"
+	"github.com/nyaruka/gocommon/random"
+	"github.com/nyaruka/gocommon/uuids"
 	"github.com/nyaruka/vkutil/assertvk"
 	"github.com/nyaruka/vkutil/queues"
 	"github.com/stretchr/testify/assert"
@@ -228,48 +230,38 @@ func TestFairConcurrency(t *testing.T) {
 
 	defer assertvk.FlushDB()
 
-	q := queues.NewFair("test", 2)
+	q := queues.NewFair("test", 5) // one owner can only occupy 5 of the 10 consumers at a time
 
-	type ownerTask struct {
+	type ownerAndTask struct {
 		owner string
 		task  string
 	}
 
-	// Generate expected tasks from 3 different owners
-	expectedTasks := make([]*ownerTask, 100)
-	owners := []string{"owner1", "owner2", "owner3"}
-	for i := range expectedTasks {
-		expectedTasks[i] = &ownerTask{owner: owners[i%len(owners)], task: fmt.Sprintf("task%d", i+1)}
-	}
+	numTasks := 10000
+	pushedTasks := make([]*ownerAndTask, 0, numTasks)
+	poppedTasks := make([]*ownerAndTask, 0, numTasks)
 
 	var wg sync.WaitGroup
 	var mutex sync.Mutex
 
-	unpushedTasks := slices.Clone(expectedTasks)
-	processedTasks := make([]*ownerTask, 0, len(expectedTasks))
-
-	getTaskToPush := func() *ownerTask {
+	recordTaskPushed := func(owner, task string) {
 		mutex.Lock()
 		defer mutex.Unlock()
 
-		if len(unpushedTasks) == 0 {
-			return nil
-		}
-
-		task := unpushedTasks[0]
-		unpushedTasks = unpushedTasks[1:]
-		return task
+		pushedTasks = append(pushedTasks, &ownerAndTask{owner: owner, task: task})
 	}
 
 	recordTaskProcessed := func(owner, task string) {
 		mutex.Lock()
 		defer mutex.Unlock()
 
-		processedTasks = append(processedTasks, &ownerTask{owner: owner, task: task})
+		poppedTasks = append(poppedTasks, &ownerAndTask{owner: owner, task: task})
 	}
 
-	// Start 3 producers to push tasks concurrently
-	for i := range 3 {
+	random.IntN(5)
+
+	// Start 5 producers to push tasks each concurrently
+	for i := range 5 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -277,22 +269,21 @@ func TestFairConcurrency(t *testing.T) {
 			vc := vp.Get()
 			defer vc.Close()
 
-			for {
-				ot := getTaskToPush()
-				if ot == nil {
-					return
-				} else {
-					err := q.Push(ctx, vc, ot.owner, false, []byte(ot.task))
-					assert.NoError(t, err, "Producer %d failed to push task %s for owner %s", i, ot.task, ot.owner)
-				}
+			for range numTasks / 5 {
+				owner := fmt.Sprintf("owner%d", random.IntN(5)+1) // five possible owners (1...5)
+				task := []byte(uuids.NewV7())
+				err := q.Push(ctx, vc, owner, false, task)
+				assert.NoError(t, err, "Producer %d failed to push task for owner %s", i, owner)
 
-				time.Sleep(time.Duration(rand.Intn(50)) * time.Millisecond)
+				recordTaskPushed(owner, string(task))
+
+				time.Sleep(time.Duration(rand.Intn(5)) * time.Millisecond)
 			}
 		}()
 	}
 
-	// Start 3 consumers to pop tasks concurrently
-	for i := range 3 {
+	// Start 10 consumers to pop tasks concurrently
+	for i := range 10 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -305,20 +296,26 @@ func TestFairConcurrency(t *testing.T) {
 				assert.NoError(t, err, "Consumer %d failed to pop task", i)
 
 				if task != nil {
-					time.Sleep(time.Duration(rand.Intn(50)) * time.Millisecond)
+					time.Sleep(time.Duration(rand.Intn(5)) * time.Millisecond)
 
 					err = q.Done(ctx, vc, owner)
 					assert.NoError(t, err, "Consumer %d failed to mark task done", i)
 
 					recordTaskProcessed(owner, string(task))
+
+					fmt.Printf("Consumer %d processed task %s for owner %s\n", i, string(task), owner)
+				} else {
+					fmt.Printf("Consumer %d got no task when popping\n", i)
 				}
 				// Check if all tasks have been processed
 				mutex.Lock()
-				allDone := len(processedTasks) >= len(expectedTasks)
+				allDone := len(poppedTasks) >= numTasks
 				mutex.Unlock()
 
 				if allDone {
 					return
+				} else {
+					time.Sleep(time.Millisecond)
 				}
 			}
 		}()
@@ -327,16 +324,15 @@ func TestFairConcurrency(t *testing.T) {
 	wg.Wait() // Wait for all producers and consumers to complete
 
 	// can't guarantee order of processed tasks, but we can check that all expected tasks were processed
-	assert.ElementsMatch(t, expectedTasks, processedTasks)
+	assert.ElementsMatch(t, pushedTasks, poppedTasks)
 
 	assertvk.ZGetAll(t, vc, "{test}:queued", map[string]float64{})
 	assertvk.ZGetAll(t, vc, "{test}:active", map[string]float64{})
-	assertvk.LGetAll(t, vc, "{test:owner1}/0", []string{})
-	assertvk.LGetAll(t, vc, "{test:owner1}/1", []string{})
-	assertvk.LGetAll(t, vc, "{test:owner2}/0", []string{})
-	assertvk.LGetAll(t, vc, "{test:owner2}/1", []string{})
-	assertvk.LGetAll(t, vc, "{test:owner3}/0", []string{})
-	assertvk.LGetAll(t, vc, "{test:owner3}/1", []string{})
+
+	for i := range 5 {
+		assertvk.LGetAll(t, vc, fmt.Sprintf("{test:owner%d}/0", i+1), []string{})
+		assertvk.LGetAll(t, vc, fmt.Sprintf("{test:owner%d}/1", i+1), []string{})
+	}
 }
 
 // assertPop is a helper function that asserts the result of a Pop operation
