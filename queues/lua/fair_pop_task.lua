@@ -11,11 +11,14 @@ end
 
 -- found a result?
 if result then
-    -- we found a task, active count was already incremented in SelectOwner
+    -- we found a task, active count was already incremented
     return result
 else
-    -- no result found, completely remove this owner from active set
-    redis.call("ZREM", activeKey, owner)
-    
+    -- no result found, decrement active count for this owner
+    local activeCount = tonumber(redis.call("ZINCRBY", activeKey, -1, owner))
+    if activeCount <= 0 then
+        redis.call("ZREM", activeKey, owner)
+    end
+
     return ""
 end

@@ -52,61 +52,26 @@ var scriptFairPopTask = valkey.NewScript(3, luaFairPopTask)
 // Pop pops the next task off our queue
 func (q *Fair) Pop(ctx context.Context, vc valkey.Conn) (string, []byte, error) {
 	for {
-		// Step 1: Select an owner to process
-		owner, err := q.popOwner(ctx, vc)
+		// Select an owner with queued tasks
+		owner, err := valkey.String(scriptFairPopOwner.DoContext(ctx, vc, q.queuedKey(), q.activeKey(), q.pausedKey(), q.tempKey(), q.maxActivePerOwner))
 		if err != nil {
 			return "", nil, err
 		}
-
-		if owner == "" {
-			// No owner available
+		if owner == "" { // None found so no tasks to pop
 			return "", nil, nil
 		}
 
-		// Step 2: Pop a task for the selected owner
-		task, err := q.popTask(ctx, vc, owner)
+		// Pop a task for the owner
+		queueKeys := q.queueKeys(owner)
+		result, err := valkey.String(scriptFairPopTask.DoContext(ctx, vc, q.activeKey(), queueKeys[0], queueKeys[1], owner))
 		if err != nil {
 			return "", nil, err
 		}
-
-		if task != nil {
-			// Successfully got a task
-			return owner, task, nil
+		if result != "" {
+			return owner, []byte(result), nil
 		}
 
-		// No task found for this owner, the popTask script already cleaned up the active count.
-		// Retry to select another owner.
-		continue
-	}
-}
-
-// selects the next owner to process tasks for and reserves a slot in the active set.
-// This is the first step of the two-step pop process that avoids dynamic key usage.
-// Returns the selected owner or empty string if no owner is available.
-func (q *Fair) popOwner(ctx context.Context, vc valkey.Conn) (string, error) {
-	owner, err := valkey.String(scriptFairPopOwner.DoContext(ctx, vc, q.queuedKey(), q.activeKey(), q.pausedKey(), q.tempKey(), q.maxActivePerOwner))
-	if err != nil {
-		return "", err
-	}
-
-	return owner, nil
-}
-
-// pops a task for the specified owner. This is the second step of the two-step pop process.
-// If no task is found, it automatically decrements the active count to clean up the reservation.
-// Returns the task data or nil if no task is available.
-func (q *Fair) popTask(ctx context.Context, vc valkey.Conn, owner string) ([]byte, error) {
-	queueKeys := q.queueKeys(owner)
-
-	result, err := valkey.String(scriptFairPopTask.DoContext(ctx, vc, q.activeKey(), queueKeys[0], queueKeys[1], owner))
-	if err != nil {
-		return nil, err
-	}
-
-	if result == "" {
-		return nil, nil
-	} else {
-		return []byte(result), nil
+		// It's possible that we selected an owner with no tasks, so go back around again
 	}
 }
 
