@@ -38,7 +38,10 @@ func (q *Fair) Push(ctx context.Context, vc valkey.Conn, owner string, priority 
 	queueKeys := q.queueKeys(owner)
 
 	_, err := scriptFairPush.Do(vc, q.queuedKey(), q.activeKey(), queueKeys[0], queueKeys[1], owner, priority, task)
-	return err
+	if err != nil {
+		return fmt.Errorf("error pushing task for owner %s: %w", owner, err)
+	}
+	return nil
 }
 
 //go:embed lua/fair_pop_owner.lua
@@ -55,7 +58,7 @@ func (q *Fair) Pop(ctx context.Context, vc valkey.Conn) (string, []byte, error) 
 		// Select an owner with queued tasks
 		owner, err := valkey.String(scriptFairPopOwner.DoContext(ctx, vc, q.queuedKey(), q.activeKey(), q.pausedKey(), q.tempKey(), q.maxActivePerOwner))
 		if err != nil {
-			return "", nil, err
+			return "", nil, fmt.Errorf("error selecting task owner: %w", err)
 		}
 		if owner == "" { // None found so no tasks to pop
 			return "", nil, nil
@@ -65,7 +68,7 @@ func (q *Fair) Pop(ctx context.Context, vc valkey.Conn) (string, []byte, error) 
 		queueKeys := q.queueKeys(owner)
 		result, err := valkey.String(scriptFairPopTask.DoContext(ctx, vc, q.activeKey(), queueKeys[0], queueKeys[1], owner))
 		if err != nil {
-			return "", nil, err
+			return "", nil, fmt.Errorf("error popping task for owner %s: %w", owner, err)
 		}
 		if result != "" {
 			return owner, []byte(result), nil
@@ -83,7 +86,10 @@ var scriptFairDone = valkey.NewScript(1, luaFairDone)
 // to maintain fair workers across orgs
 func (q *Fair) Done(ctx context.Context, vc valkey.Conn, owner string) error {
 	_, err := scriptFairDone.Do(vc, q.activeKey(), owner)
-	return err
+	if err != nil {
+		return fmt.Errorf("error marking task done for owner %s: %w", owner, err)
+	}
+	return nil
 }
 
 // Pause marks the given owner as paused, disabling processing of their tasks
@@ -125,12 +131,7 @@ func (q *Fair) Size(ctx context.Context, vc valkey.Conn, owner string) (int, err
 	vc.Send("MULTI")
 	vc.Send("LLEN", queueKeys[0])
 	vc.Send("LLEN", queueKeys[1])
-	r, err := valkey.Values(valkey.DoContext(vc, ctx, "EXEC"))
-	if err != nil {
-		return 0, err
-	}
-
-	counts, err := valkey.Ints(r, nil)
+	counts, err := valkey.Ints(valkey.DoContext(vc, ctx, "EXEC"))
 	if err != nil {
 		return 0, err
 	}

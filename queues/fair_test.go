@@ -61,16 +61,25 @@ func TestFair(t *testing.T) {
 		assert.Equal(t, expected, actual)
 	}
 
-	assertSize := func(owner string, expected int) {
+	assertTasks := func(owner string, expected0, expected1 []string) {
+		actual0, err := valkey.Strings(valkey.DoContext(vc, context.Background(), "LRANGE", "{test:"+owner+"}/0", 0, -1))
+		require.NoError(t, err)
+		actual1, err := valkey.Strings(valkey.DoContext(vc, context.Background(), "LRANGE", "{test:"+owner+"}/1", 0, -1))
+		require.NoError(t, err)
+
+		assert.Equal(t, expected0, actual0, "priority 0 tasks mismatch")
+		assert.Equal(t, expected1, actual1, "priority 1 tasks mismatch")
+
+		// checked .Size() method as well
 		size, err := q.Size(ctx, vc, owner)
 		assert.NoError(t, err)
-		assert.Equal(t, expected, size)
+		assert.Equal(t, len(expected0)+len(expected1), size)
 	}
 
 	assertQueued(map[string]int{})
 	assertActive(map[string]int{})
-	assertSize("owner1", 0)
-	assertSize("owner2", 0)
+	assertTasks("owner1", []string{}, []string{})
+	assertTasks("owner2", []string{}, []string{})
 
 	q.Push(ctx, vc, "owner1", false, []byte(`task1`))
 	q.Push(ctx, vc, "owner1", true, []byte(`task2`))
@@ -81,13 +90,8 @@ func TestFair(t *testing.T) {
 	// nobody processing any tasks so no workers assigned in active set
 	assertQueued(map[string]int{"owner1": 3, "owner2": 2})
 	assertActive(map[string]int{})
-	assertvk.LGetAll(t, vc, "{test:owner1}/0", []string{`task1`, `task4`})
-	assertvk.LGetAll(t, vc, "{test:owner1}/1", []string{`task2`})
-	assertvk.LGetAll(t, vc, "{test:owner2}/0", []string{`task3`})
-	assertvk.LGetAll(t, vc, "{test:owner2}/1", []string{`task5`})
-
-	assertSize("owner1", 3)
-	assertSize("owner2", 2)
+	assertTasks("owner1", []string{`task1`, `task4`}, []string{`task2`})
+	assertTasks("owner2", []string{`task3`}, []string{`task5`})
 
 	assertPop(t, q, vc, "owner1", "task2") // because it's highest priority for owner 1
 	assertQueued(map[string]int{"owner1": 2, "owner2": 2})
@@ -100,9 +104,8 @@ func TestFair(t *testing.T) {
 	assertPop(t, q, vc, "owner1", "task1")
 	assertQueued(map[string]int{"owner1": 1, "owner2": 1})
 	assertActive(map[string]int{"owner1": 2, "owner2": 1})
-
-	assertSize("owner1", 1)
-	assertSize("owner2", 1)
+	assertTasks("owner1", []string{`task4`}, []string{})
+	assertTasks("owner2", []string{`task3`}, []string{})
 
 	// mark task2 and task1 (owner1) as complete
 	q.Done(ctx, vc, "owner1")
@@ -113,15 +116,15 @@ func TestFair(t *testing.T) {
 
 	assertPop(t, q, vc, "owner1", "task4")
 	assertPop(t, q, vc, "owner2", "task3")
-	assertSize("owner1", 0)
-	assertSize("owner2", 0)
+	assertTasks("owner1", []string{}, []string{})
+	assertTasks("owner2", []string{}, []string{})
 
 	assertQueued(map[string]int{})
 	assertActive(map[string]int{"owner1": 1, "owner2": 2})
 
 	assertPop(t, q, vc, "", "") // no more tasks
-	assertSize("owner1", 0)
-	assertSize("owner2", 0)
+	assertTasks("owner1", []string{}, []string{})
+	assertTasks("owner2", []string{}, []string{})
 
 	assertQueued(map[string]int{})
 	assertActive(map[string]int{"owner1": 1, "owner2": 2})
