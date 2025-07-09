@@ -1,3 +1,7 @@
+v0.17.0 (2025-07-09)
+-------------------------
+ * Change queues.Fair so owner queue keys have same hashtag as other keys
+
 v0.16.0 (2025-07-08)
 -------------------------
  * Move Locker into new locks package
