@@ -4,53 +4,64 @@ import (
 	"context"
 	"testing"
 
-	"github.com/gomodule/redigo/redis"
 	"github.com/nyaruka/vkutil/assertvk"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestAsserts(t *testing.T) {
 	ctx := context.Background()
-	vp := assertvk.TestDB()
-	vc := vp.Get()
+	vc := assertvk.TestValkeyClient()
 	defer vc.Close()
 
 	defer assertvk.FlushDB()
 
-	redis.DoContext(vc, ctx, "SET", "mykey", "one")
+	err := vc.Do(ctx, vc.B().Set().Key("mykey").Value("one").Build()).Error()
+	assert.NoError(t, err)
 
 	assert.True(t, assertvk.Exists(t, vc, "mykey"))
 	assert.True(t, assertvk.NotExists(t, vc, "mykey2"))
 	assert.True(t, assertvk.Get(t, vc, "mykey", "one"))
 
-	redis.DoContext(vc, ctx, "RPUSH", "mylist", "one")
-	redis.DoContext(vc, ctx, "RPUSH", "mylist", "two")
-	redis.DoContext(vc, ctx, "RPUSH", "mylist", "three")
+	err = vc.Do(ctx, vc.B().Rpush().Key("mylist").Element("one").Build()).Error()
+	assert.NoError(t, err)
+	err = vc.Do(ctx, vc.B().Rpush().Key("mylist").Element("two").Build()).Error()
+	assert.NoError(t, err)
+	err = vc.Do(ctx, vc.B().Rpush().Key("mylist").Element("three").Build()).Error()
+	assert.NoError(t, err)
 
 	assert.True(t, assertvk.LLen(t, vc, "mylist", 3))
 	assert.True(t, assertvk.LRange(t, vc, "mylist", 0, 1, []string{"one", "two"}))
 	assert.True(t, assertvk.LGetAll(t, vc, "mylist", []string{"one", "two", "three"}))
 
-	redis.DoContext(vc, ctx, "SADD", "myset", "one")
-	redis.DoContext(vc, ctx, "SADD", "myset", "two")
-	redis.DoContext(vc, ctx, "SADD", "myset", "three")
+	err = vc.Do(ctx, vc.B().Sadd().Key("myset").Member("one").Build()).Error()
+	assert.NoError(t, err)
+	err = vc.Do(ctx, vc.B().Sadd().Key("myset").Member("two").Build()).Error()
+	assert.NoError(t, err)
+	err = vc.Do(ctx, vc.B().Sadd().Key("myset").Member("three").Build()).Error()
+	assert.NoError(t, err)
 
 	assert.True(t, assertvk.SCard(t, vc, "myset", 3))
 	assert.True(t, assertvk.SIsMember(t, vc, "myset", "two"))
 	assert.True(t, assertvk.SIsNotMember(t, vc, "myset", "four"))
 	assert.True(t, assertvk.SMembers(t, vc, "myset", []string{"two", "one", "three"}))
 
-	redis.DoContext(vc, ctx, "HSET", "myhash", "a", "one")
-	redis.DoContext(vc, ctx, "HSET", "myhash", "b", "two")
-	redis.DoContext(vc, ctx, "HSET", "myhash", "c", "three")
+	err = vc.Do(ctx, vc.B().Hset().Key("myhash").FieldValue().FieldValue("a", "one").Build()).Error()
+	assert.NoError(t, err)
+	err = vc.Do(ctx, vc.B().Hset().Key("myhash").FieldValue().FieldValue("b", "two").Build()).Error()
+	assert.NoError(t, err)
+	err = vc.Do(ctx, vc.B().Hset().Key("myhash").FieldValue().FieldValue("c", "three").Build()).Error()
+	assert.NoError(t, err)
 
 	assert.True(t, assertvk.HLen(t, vc, "myhash", 3))
 	assert.True(t, assertvk.HGet(t, vc, "myhash", "b", "two"))
 	assert.True(t, assertvk.HGetAll(t, vc, "myhash", map[string]string{"a": "one", "b": "two", "c": "three"}))
 
-	redis.DoContext(vc, ctx, "ZADD", "myzset", 1, "one")
-	redis.DoContext(vc, ctx, "ZADD", "myzset", 2, "two")
-	redis.DoContext(vc, ctx, "ZADD", "myzset", 3, "three")
+	err = vc.Do(ctx, vc.B().Zadd().Key("myzset").ScoreMember().ScoreMember(1, "one").Build()).Error()
+	assert.NoError(t, err)
+	err = vc.Do(ctx, vc.B().Zadd().Key("myzset").ScoreMember().ScoreMember(2, "two").Build()).Error()
+	assert.NoError(t, err)
+	err = vc.Do(ctx, vc.B().Zadd().Key("myzset").ScoreMember().ScoreMember(3, "three").Build()).Error()
+	assert.NoError(t, err)
 
 	assert.True(t, assertvk.ZCard(t, vc, "myzset", 3))
 	assert.True(t, assertvk.ZScore(t, vc, "myzset", "one", 1))

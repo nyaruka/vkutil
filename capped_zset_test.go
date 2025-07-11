@@ -12,8 +12,7 @@ import (
 
 func TestCappedZSet(t *testing.T) {
 	ctx := context.Background()
-	vp := assertvk.TestDB()
-	vc := vp.Get()
+	vc := assertvk.TestValkeyClient()
 	defer vc.Close()
 
 	defer assertvk.FlushDB()
