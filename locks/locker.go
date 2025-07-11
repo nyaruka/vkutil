@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	valkey "github.com/gomodule/redigo/redis"
+	"github.com/gomodule/redigo/redis"
 	"github.com/nyaruka/vkutil"
 )
 
@@ -25,14 +25,14 @@ func NewLocker(key string, expiration time.Duration) *Locker {
 // Grab tries to grab this lock in an atomic operation. It returns the lock value if successful.
 // It will retry every second until the retry period has ended, returning empty string if not
 // acquired in that time.
-func (l *Locker) Grab(ctx context.Context, vp *valkey.Pool, retry time.Duration) (string, error) {
+func (l *Locker) Grab(ctx context.Context, vp *redis.Pool, retry time.Duration) (string, error) {
 	value := vkutil.RandomBase64(10)           // generate our lock value
 	expires := int(l.expiration / time.Second) // convert our expiration to seconds
 
 	start := time.Now()
 	for {
 		vc := vp.Get()
-		success, err := valkey.DoContext(vc, ctx, "SET", l.key, value, "EX", expires, "NX")
+		success, err := redis.DoContext(vc, ctx, "SET", l.key, value, "EX", expires, "NX")
 		vc.Close()
 
 		if err != nil {
@@ -54,11 +54,11 @@ func (l *Locker) Grab(ctx context.Context, vp *valkey.Pool, retry time.Duration)
 
 //go:embed lua/locker_release.lua
 var lockerRelease string
-var lockerReleaseScript = valkey.NewScript(1, lockerRelease)
+var lockerReleaseScript = redis.NewScript(1, lockerRelease)
 
 // Release releases this lock if the given lock value is correct (i.e we own this lock). It is not an
 // error to release a lock that is no longer present.
-func (l *Locker) Release(ctx context.Context, vp *valkey.Pool, value string) error {
+func (l *Locker) Release(ctx context.Context, vp *redis.Pool, value string) error {
 	vc := vp.Get()
 	defer vc.Close()
 
@@ -69,10 +69,10 @@ func (l *Locker) Release(ctx context.Context, vp *valkey.Pool, value string) err
 
 //go:embed lua/locker_extend.lua
 var lockerExtend string
-var lockerExtendScript = valkey.NewScript(1, lockerExtend)
+var lockerExtendScript = redis.NewScript(1, lockerExtend)
 
 // Extend extends our lock expiration by the passed in number of seconds provided the lock value is correct
-func (l *Locker) Extend(ctx context.Context, vp *valkey.Pool, value string, expiration time.Duration) error {
+func (l *Locker) Extend(ctx context.Context, vp *redis.Pool, value string, expiration time.Duration) error {
 	vc := vp.Get()
 	defer vc.Close()
 
@@ -84,11 +84,11 @@ func (l *Locker) Extend(ctx context.Context, vp *valkey.Pool, value string, expi
 }
 
 // IsLocked returns whether this lock is currently held by any process.
-func (l *Locker) IsLocked(ctx context.Context, vp *valkey.Pool) (bool, error) {
+func (l *Locker) IsLocked(ctx context.Context, vp *redis.Pool) (bool, error) {
 	vc := vp.Get()
 	defer vc.Close()
 
-	exists, err := valkey.Bool(valkey.DoContext(vc, ctx, "EXISTS", l.key))
+	exists, err := redis.Bool(redis.DoContext(vc, ctx, "EXISTS", l.key))
 	if err != nil {
 		return false, err
 	}

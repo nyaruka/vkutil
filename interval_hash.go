@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	valkey "github.com/gomodule/redigo/redis"
+	"github.com/gomodule/redigo/redis"
 )
 
 // IntervalHash operates like a hash map but with expiring intervals
@@ -23,14 +23,14 @@ func NewIntervalHash(keyBase string, interval time.Duration, size int) *Interval
 
 //go:embed lua/ihash_get.lua
 var ihashGet string
-var ihashGetScript = valkey.NewScript(-1, ihashGet)
+var ihashGetScript = redis.NewScript(-1, ihashGet)
 
 // Get returns the value of the given field
-func (h *IntervalHash) Get(ctx context.Context, vc valkey.Conn, field string) (string, error) {
+func (h *IntervalHash) Get(ctx context.Context, vc redis.Conn, field string) (string, error) {
 	keys := h.keys()
 
-	value, err := valkey.String(ihashGetScript.DoContext(ctx, vc, valkey.Args{}.Add(len(keys)).AddFlat(keys).Add(field)...))
-	if err != nil && err != valkey.ErrNil {
+	value, err := redis.String(ihashGetScript.DoContext(ctx, vc, redis.Args{}.Add(len(keys)).AddFlat(keys).Add(field)...))
+	if err != nil && err != redis.ErrNil {
 		return "", err
 	}
 	return value, nil
@@ -38,10 +38,10 @@ func (h *IntervalHash) Get(ctx context.Context, vc valkey.Conn, field string) (s
 
 //go:embed lua/ihash_mget.lua
 var ihashMGet string
-var ihashMGetScript = valkey.NewScript(-1, ihashMGet)
+var ihashMGetScript = redis.NewScript(-1, ihashMGet)
 
 // MGet returns the values of the given fields
-func (h *IntervalHash) MGet(ctx context.Context, vc valkey.Conn, fields ...string) ([]string, error) {
+func (h *IntervalHash) MGet(ctx context.Context, vc redis.Conn, fields ...string) ([]string, error) {
 	keys := h.keys()
 
 	// for consistency with HMGET, zero fields is an error
@@ -49,41 +49,41 @@ func (h *IntervalHash) MGet(ctx context.Context, vc valkey.Conn, fields ...strin
 		return nil, errors.New("wrong number of arguments for command")
 	}
 
-	value, err := valkey.Strings(ihashMGetScript.DoContext(ctx, vc, valkey.Args{}.Add(len(keys)).AddFlat(keys).AddFlat(fields)...))
-	if err != nil && err != valkey.ErrNil {
+	value, err := redis.Strings(ihashMGetScript.DoContext(ctx, vc, redis.Args{}.Add(len(keys)).AddFlat(keys).AddFlat(fields)...))
+	if err != nil && err != redis.ErrNil {
 		return nil, err
 	}
 	return value, nil
 }
 
 // Set sets the value of the given field
-func (h *IntervalHash) Set(ctx context.Context, vc valkey.Conn, field, value string) error {
+func (h *IntervalHash) Set(ctx context.Context, vc redis.Conn, field, value string) error {
 	key := h.keys()[0]
 
 	vc.Send("MULTI")
 	vc.Send("HSET", key, field, value)
 	vc.Send("EXPIRE", key, h.size*int(h.interval/time.Second))
-	_, err := valkey.DoContext(vc, ctx, "EXEC")
+	_, err := redis.DoContext(vc, ctx, "EXEC")
 	return err
 }
 
 // Del removes the given fields
-func (h *IntervalHash) Del(ctx context.Context, vc valkey.Conn, fields ...string) error {
+func (h *IntervalHash) Del(ctx context.Context, vc redis.Conn, fields ...string) error {
 	vc.Send("MULTI")
 	for _, k := range h.keys() {
-		vc.Send("HDEL", valkey.Args{}.Add(k).AddFlat(fields)...)
+		vc.Send("HDEL", redis.Args{}.Add(k).AddFlat(fields)...)
 	}
-	_, err := valkey.DoContext(vc, ctx, "EXEC")
+	_, err := redis.DoContext(vc, ctx, "EXEC")
 	return err
 }
 
 // Clear removes all fields
-func (h *IntervalHash) Clear(ctx context.Context, vc valkey.Conn) error {
+func (h *IntervalHash) Clear(ctx context.Context, vc redis.Conn) error {
 	vc.Send("MULTI")
 	for _, k := range h.keys() {
 		vc.Send("DEL", k)
 	}
-	_, err := valkey.DoContext(vc, ctx, "EXEC")
+	_, err := redis.DoContext(vc, ctx, "EXEC")
 	return err
 }
 
