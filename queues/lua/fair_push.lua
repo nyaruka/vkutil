@@ -9,9 +9,9 @@ local task = ARGV[3]
 -- we could just increment queued count but counting the queue sizes makes it self-correcting
 local queuedCount = 0
 if priority == 0 then
-    queuedCount = redis.call("RPUSH", queue0Key, task) + redis.call("LLEN", queue1Key)
+    queuedCount = server.call("RPUSH", queue0Key, task) + server.call("LLEN", queue1Key)
 else
-    queuedCount = redis.call("RPUSH", queue1Key, task) + redis.call("LLEN", queue0Key)
+    queuedCount = server.call("RPUSH", queue1Key, task) + server.call("LLEN", queue0Key)
 end
 
-redis.call("ZADD", queuedKey, queuedCount, owner)
+server.call("ZADD", queuedKey, queuedCount, owner)

@@ -5,7 +5,7 @@ import (
 	_ "embed"
 	"time"
 
-	"github.com/gomodule/redigo/redis"
+	"github.com/valkey-io/valkey-go"
 )
 
 // IntervalSet operates like a set but with expiring intervals
@@ -22,44 +22,42 @@ func NewIntervalSet(keyBase string, interval time.Duration, size int) *IntervalS
 
 //go:embed lua/iset_ismember.lua
 var isetIsMember string
-var isetIsMemberScript = redis.NewScript(-1, isetIsMember)
+var isetIsMemberScript = valkey.NewLuaScript(isetIsMember)
 
 // IsMember returns whether we contain the given value
-func (s *IntervalSet) IsMember(ctx context.Context, vc redis.Conn, member string) (bool, error) {
+func (s *IntervalSet) IsMember(ctx context.Context, vc valkey.Client, member string) (bool, error) {
 	keys := s.keys()
-
-	return redis.Bool(isetIsMemberScript.DoContext(ctx, vc, redis.Args{}.Add(len(keys)).AddFlat(keys).Add(member)...))
+	return isetIsMemberScript.Exec(ctx, vc, keys, []string{member}).AsBool()
 }
 
 // Add adds the given value
-func (s *IntervalSet) Add(ctx context.Context, vc redis.Conn, member string) error {
+func (s *IntervalSet) Add(ctx context.Context, vc valkey.Client, member string) error {
 	key := s.keys()[0]
 
-	vc.Send("MULTI")
-	vc.Send("SADD", key, member)
-	vc.Send("EXPIRE", key, s.size*int(s.interval/time.Second))
-	_, err := redis.DoContext(vc, ctx, "EXEC")
-	return err
+	vc.Do(ctx, vc.B().Multi().Build())
+	vc.Do(ctx, vc.B().Sadd().Key(key).Member(member).Build())
+	vc.Do(ctx, vc.B().Expire().Key(key).Seconds(int64(s.size)*int64(s.interval/time.Second)).Build())
+	return vc.Do(ctx, vc.B().Exec().Build()).Error()
 }
 
 // Rem removes the given values
-func (s *IntervalSet) Rem(ctx context.Context, vc redis.Conn, members ...string) error {
-	vc.Send("MULTI")
+func (s *IntervalSet) Rem(ctx context.Context, vc valkey.Client, members ...string) error {
+
+	vc.Do(ctx, vc.B().Multi().Build())
 	for _, k := range s.keys() {
-		vc.Send("SREM", redis.Args{}.Add(k).AddFlat(members)...)
+		vc.Do(ctx, vc.B().Srem().Key(k).Member(members...).Build())
 	}
-	_, err := redis.DoContext(vc, ctx, "EXEC")
-	return err
+	return vc.Do(ctx, vc.B().Exec().Build()).Error()
 }
 
 // Clear removes all values
-func (s *IntervalSet) Clear(ctx context.Context, vc redis.Conn) error {
-	vc.Send("MULTI")
+func (s *IntervalSet) Clear(ctx context.Context, vc valkey.Client) error {
+
+	vc.Do(ctx, vc.B().Multi().Build())
 	for _, k := range s.keys() {
-		vc.Send("DEL", k)
+		vc.Do(ctx, vc.B().Del().Key(k).Build())
 	}
-	_, err := redis.DoContext(vc, ctx, "EXEC")
-	return err
+	return vc.Do(ctx, vc.B().Exec().Build()).Error()
 }
 
 func (s *IntervalSet) keys() []string {

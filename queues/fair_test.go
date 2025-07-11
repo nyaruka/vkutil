@@ -6,24 +6,22 @@ import (
 	"maps"
 	"math/rand"
 	"slices"
-	"strconv"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/gomodule/redigo/redis"
 	"github.com/nyaruka/gocommon/random"
 	"github.com/nyaruka/gocommon/uuids"
 	"github.com/nyaruka/vkutil/assertvk"
 	"github.com/nyaruka/vkutil/queues"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/valkey-io/valkey-go"
 )
 
 func TestFair(t *testing.T) {
 	ctx := context.Background()
-	vp := assertvk.TestDB()
-	vc := vp.Get()
+	vc := assertvk.TestValkeyClient()
 	defer vc.Close()
 
 	defer assertvk.FlushDB()
@@ -31,13 +29,12 @@ func TestFair(t *testing.T) {
 	q := queues.NewFair("test", 3)
 
 	assertQueued := func(expected map[string]int) {
-		actualStrings, err := redis.StringMap(vc.Do("ZRANGE", "{test}:queued", 0, -1, "WITHSCORES"))
+		actualStrings, err := vc.Do(ctx, vc.B().Zrange().Key("{test}:queued").Min("0").Max("-1").Withscores().Build()).AsZScores()
 		require.NoError(t, err)
 
 		actual := make(map[string]int, len(actualStrings))
-		for k, v := range actualStrings {
-			actual[k], err = strconv.Atoi(v)
-			require.NoError(t, err)
+		for _, v := range actualStrings {
+			actual[v.Member] = int(v.Score)
 		}
 
 		assert.Equal(t, expected, actual)
@@ -49,22 +46,21 @@ func TestFair(t *testing.T) {
 	}
 
 	assertActive := func(expected map[string]int) {
-		actualStrings, err := redis.StringMap(vc.Do("ZRANGE", "{test}:active", 0, -1, "WITHSCORES"))
+		actualStrings, err := vc.Do(ctx, vc.B().Zrange().Key("{test}:active").Min("0").Max("-1").Withscores().Build()).AsZScores()
 		require.NoError(t, err)
 
 		actual := make(map[string]int, len(actualStrings))
-		for k, v := range actualStrings {
-			actual[k], err = strconv.Atoi(v)
-			require.NoError(t, err)
+		for _, v := range actualStrings {
+			actual[v.Member] = int(v.Score)
 		}
 
 		assert.Equal(t, expected, actual)
 	}
 
 	assertTasks := func(owner string, expected0, expected1 []string) {
-		actual0, err := redis.Strings(vc.Do("LRANGE", "{test}:o:"+owner+"/0", 0, -1))
+		actual0, err := vc.Do(ctx, vc.B().Lrange().Key("{test}:o:"+owner+"/0").Start(0).Stop(-1).Build()).AsStrSlice()
 		require.NoError(t, err)
-		actual1, err := redis.Strings(vc.Do("LRANGE", "{test}:o:"+owner+"/1", 0, -1))
+		actual1, err := vc.Do(ctx, vc.B().Lrange().Key("{test}:o:"+owner+"/1").Start(0).Stop(-1).Build()).AsStrSlice()
 		require.NoError(t, err)
 
 		assert.Equal(t, expected0, actual0, "priority 0 tasks mismatch")
@@ -186,7 +182,7 @@ func TestFair(t *testing.T) {
 	assertActive(map[string]int{})
 
 	assertvk.LLen(t, vc, "{test}:o:owner1/0", 1)
-	_, err = vc.Do("DEL", "{test}:o:owner1/0")
+	err = vc.Do(ctx, vc.B().Del().Key("{test}:o:owner1/0").Build()).Error()
 	assert.NoError(t, err)
 
 	assertPop(t, q, vc, "owner2", "task7")
@@ -204,8 +200,7 @@ func TestFair(t *testing.T) {
 
 func TestFairMaxActivePerOwner(t *testing.T) {
 	ctx := context.Background()
-	vp := assertvk.TestDB()
-	vc := vp.Get()
+	vc := assertvk.TestValkeyClient()
 	defer vc.Close()
 
 	defer assertvk.FlushDB()
@@ -227,8 +222,7 @@ func TestFairMaxActivePerOwner(t *testing.T) {
 
 func TestFairConcurrency(t *testing.T) {
 	ctx := context.Background()
-	vp := assertvk.TestDB()
-	vc := vp.Get()
+	vc := assertvk.TestValkeyClient()
 	defer vc.Close()
 
 	defer assertvk.FlushDB()
@@ -269,7 +263,7 @@ func TestFairConcurrency(t *testing.T) {
 		go func() {
 			defer wg.Done()
 
-			vc := vp.Get()
+			vc := assertvk.TestValkeyClient()
 			defer vc.Close()
 
 			for range numTasks / 5 {
@@ -291,7 +285,7 @@ func TestFairConcurrency(t *testing.T) {
 		go func() {
 			defer wg.Done()
 
-			vc := vp.Get()
+			vc := assertvk.TestValkeyClient()
 			defer vc.Close()
 
 			for {
@@ -339,7 +333,7 @@ func TestFairConcurrency(t *testing.T) {
 }
 
 // assertPop is a helper function that asserts the result of a Pop operation
-func assertPop(t *testing.T, q *queues.Fair, vc redis.Conn, expectedOwner, expectedTask string) {
+func assertPop(t *testing.T, q *queues.Fair, vc valkey.Client, expectedOwner, expectedTask string) {
 	ctx := context.Background()
 	owner, task, err := q.Pop(ctx, vc)
 	require.NoError(t, err)

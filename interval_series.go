@@ -5,7 +5,7 @@ import (
 	_ "embed"
 	"time"
 
-	"github.com/gomodule/redigo/redis"
+	"github.com/valkey-io/valkey-go"
 )
 
 // IntervalSeries returns all values from interval based hashes.
@@ -21,30 +21,29 @@ func NewIntervalSeries(keyBase string, interval time.Duration, size int) *Interv
 }
 
 // Record increments the value of field by value in the current interval
-func (s *IntervalSeries) Record(ctx context.Context, vc redis.Conn, field string, value int64) error {
+func (s *IntervalSeries) Record(ctx context.Context, vc valkey.Client, field string, value int64) error {
 	currKey := s.keys()[0]
 
-	vc.Send("MULTI")
-	vc.Send("HINCRBY", currKey, field, value)
-	vc.Send("EXPIRE", currKey, s.size*int(s.interval/time.Second))
-	_, err := redis.DoContext(vc, ctx, "EXEC")
-	return err
+	vc.Do(ctx, vc.B().Multi().Build())
+
+	vc.Do(ctx, vc.B().Hincrby().Key(currKey).Field(field).Increment(value).Build())
+	vc.Do(ctx, vc.B().Expire().Key(currKey).Seconds(int64(s.size)*int64(s.interval/time.Second)).Build())
+	return vc.Do(ctx, vc.B().Exec().Build()).Error()
 }
 
 //go:embed lua/iseries_get.lua
 var iseriesGet string
-var iseriesGetScript = redis.NewScript(-1, iseriesGet)
+var iseriesGetScript = valkey.NewLuaScript(iseriesGet)
 
 // Get gets the values of field in all intervals
-func (s *IntervalSeries) Get(ctx context.Context, vc redis.Conn, field string) ([]int64, error) {
+func (s *IntervalSeries) Get(ctx context.Context, vc valkey.Client, field string) ([]int64, error) {
 	keys := s.keys()
-	args := redis.Args{}.Add(len(keys)).AddFlat(keys).Add(field)
-
-	return redis.Int64s(iseriesGetScript.DoContext(ctx, vc, args...))
+	res := iseriesGetScript.Exec(ctx, vc, keys, []string{field})
+	return res.AsIntSlice()
 }
 
 // Total gets the total value of field across all intervals
-func (s *IntervalSeries) Total(ctx context.Context, vc redis.Conn, field string) (int64, error) {
+func (s *IntervalSeries) Total(ctx context.Context, vc valkey.Client, field string) (int64, error) {
 	vals, err := s.Get(ctx, vc, field)
 	if err != nil {
 		return 0, err
