@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	valkey "github.com/gomodule/redigo/redis"
+	"github.com/valkey-io/valkey-go"
 )
 
 const (
@@ -13,32 +13,28 @@ const (
 	testDBIndex = 0
 )
 
-// TestDB returns a valkey pool to our test database
-func TestDB() *valkey.Pool {
-	return &valkey.Pool{
-		Dial: func() (valkey.Conn, error) {
-			conn, err := valkey.Dial("tcp", getHostAddress())
-			if err != nil {
-				return nil, err
-			}
-			_, err = valkey.DoContext(conn, context.Background(), "SELECT", 0)
-			return conn, err
-		},
+// TestValkeyClient returns a valkey client to our test database
+func TestValkeyClient() valkey.Client {
+	client, err := valkey.NewClient(valkey.ClientOption{
+		InitAddress: []string{getHostAddress()},
+		SelectDB:    testDBIndex,
+	})
+	if err != nil {
+		panic(fmt.Sprintf("error creating valkey client: %s", err.Error()))
 	}
+
+	return client
 }
 
 // FlushDB flushes the test database
 func FlushDB() {
-	rp, err := valkey.Dial("tcp", getHostAddress())
-	if err != nil {
-		panic(fmt.Sprintf("error connecting to valkey db: %s", err.Error()))
-	}
+	client := TestValkeyClient()
+	defer client.Close()
 
-	valkey.DoContext(rp, context.Background(), "SELECT", testDBIndex)
+	result := client.Do(context.Background(), client.B().Flushdb().Build())
 
-	_, err = valkey.DoContext(rp, context.Background(), "FLUSHDB")
-	if err != nil {
-		panic(fmt.Sprintf("error flushing valkey db: %s", err.Error()))
+	if result.Error() != nil {
+		panic(fmt.Sprintf("error flushing valkey db: %s", result.Error()))
 	}
 }
 

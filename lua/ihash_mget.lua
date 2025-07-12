@@ -8,7 +8,7 @@ for i, key in ipairs(fields) do
 end
 
 for _, key in ipairs(KEYS) do
-	local vs = redis.call("HMGET", key, unpack(fields))
+	local vs = server.call("HMGET", key, unpack(fields))
 
 	for i, v in ipairs(vs) do
 		if (v ~= false and values[i] == false) then

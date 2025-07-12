@@ -1,12 +1,11 @@
 name: CI
 on: [push, pull_request]
+env:
+  go-version: "1.24.x"
 jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
-    container:
-      image: golang:1.24
-
     services:
       valkey7:
         image: valkey/valkey:7.2-alpine
@@ -24,7 +23,10 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-
+    - name: Install Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ env.go-version }}
     - name: Run tests
       env:
         VALKEY_HOST: ${{ matrix.valkey-host }}
