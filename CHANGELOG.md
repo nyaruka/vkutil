@@ -1,3 +1,7 @@
+v0.18.0 (2025-07-30)
+-------------------------
+ * Remove ping test from NewPool
+
 v0.17.0 (2025-07-09)
 -------------------------
  * Change queues.Fair so owner queue keys have same hashtag as other keys
