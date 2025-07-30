@@ -64,12 +64,5 @@ func NewPool(redisURL string, options ...func(*valkey.Pool)) (*valkey.Pool, erro
 		o(vp)
 	}
 
-	// test the connection
-	conn := vp.Get()
-	defer conn.Close()
-	if _, err = conn.Do("PING"); err != nil {
-		return nil, err
-	}
-
 	return vp, nil
 }
