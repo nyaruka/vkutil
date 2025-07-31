@@ -1,3 +1,7 @@
+v0.19.1 (2025-07-31)
+-------------------------
+ * Fix return type of Fair.Paused and Fair.Queued
+
 v0.19.0 (2025-07-31)
 -------------------------
  * Add ids to tasks (v7 uuids)
