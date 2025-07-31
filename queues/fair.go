@@ -7,7 +7,6 @@ import (
 	"fmt"
 
 	valkey "github.com/gomodule/redigo/redis"
-	"github.com/nyaruka/gocommon/uuids"
 )
 
 // Fair implements a fair queue where tasks are distributed evenly across owners.
@@ -40,7 +39,7 @@ var scriptFairPush = valkey.NewScript(4, luaFairPush)
 
 // Push adds the passed in task to our queue for execution
 func (q *Fair) Push(ctx context.Context, vc valkey.Conn, owner OwnerID, priority bool, task []byte) (TaskID, error) {
-	id := TaskID(uuids.NewV7())
+	id := newTaskID()
 
 	// prepend UUID to the task
 	var payload bytes.Buffer
