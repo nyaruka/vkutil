@@ -1,3 +1,7 @@
+v0.19.2 (2025-07-31)
+-------------------------
+ * Fix tests
+
 v0.19.1 (2025-07-31)
 -------------------------
  * Fix return type of Fair.Paused and Fair.Queued
