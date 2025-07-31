@@ -12,6 +12,7 @@ import (
 	"time"
 
 	valkey "github.com/gomodule/redigo/redis"
+	"github.com/nyaruka/gocommon/dates"
 	"github.com/nyaruka/gocommon/random"
 	"github.com/nyaruka/gocommon/uuids"
 	"github.com/nyaruka/vkutil/assertvk"
@@ -25,6 +26,8 @@ func TestFair(t *testing.T) {
 	vp := assertvk.TestDB()
 	vc := vp.Get()
 	defer vc.Close()
+
+	uuids.SetGenerator(uuids.NewSeededGenerator(1234, dates.NewSequentialNow(time.Date(2025, 7, 31, 11, 30, 0, 0, time.UTC), time.Second)))
 
 	defer assertvk.FlushDB()
 
@@ -61,7 +64,7 @@ func TestFair(t *testing.T) {
 		assert.Equal(t, expected, actual)
 	}
 
-	assertTasks := func(owner string, expected0, expected1 []string) {
+	assertTasks := func(owner queues.OwnerID, expected0, expected1 []string) {
 		actual0, err := valkey.Strings(vc.Do("LRANGE", "{test}:o:"+owner+"/0", 0, -1))
 		require.NoError(t, err)
 		actual1, err := valkey.Strings(vc.Do("LRANGE", "{test}:o:"+owner+"/1", 0, -1))
@@ -81,31 +84,31 @@ func TestFair(t *testing.T) {
 	assertTasks("owner1", []string{}, []string{})
 	assertTasks("owner2", []string{}, []string{})
 
-	q.Push(ctx, vc, "owner1", false, []byte(`task1`))
-	q.Push(ctx, vc, "owner1", true, []byte(`task2`))
-	q.Push(ctx, vc, "owner2", false, []byte(`task3`))
-	q.Push(ctx, vc, "owner1", false, []byte(`task4`))
-	q.Push(ctx, vc, "owner2", true, []byte(`task5`))
+	task1UUID := assertPush(t, q, vc, "owner1", false, []byte(`task1`))
+	task2UUID := assertPush(t, q, vc, "owner1", true, []byte(`task2`))
+	task3UUID := assertPush(t, q, vc, "owner2", false, []byte(`task3`))
+	task4UUID := assertPush(t, q, vc, "owner1", false, []byte(`task4`))
+	task5UUID := assertPush(t, q, vc, "owner2", true, []byte(`task5`))
 
 	// nobody processing any tasks so no workers assigned in active set
 	assertQueued(map[string]int{"owner1": 3, "owner2": 2})
 	assertActive(map[string]int{})
-	assertTasks("owner1", []string{`task1`, `task4`}, []string{`task2`})
-	assertTasks("owner2", []string{`task3`}, []string{`task5`})
+	assertTasks("owner1", []string{"0198603f-06c0-7000-aded-7d8b151cbd5b|task1", "0198603f-1278-7000-8ef6-384876655d1b|task4"}, []string{"0198603f-0aa8-7000-b664-880fc7581c77|task2"})
+	assertTasks("owner2", []string{"0198603f-0e90-7000-95b3-58675999c4b7|task3"}, []string{"0198603f-1660-7000-8ab6-9b9af5cd042a|task5"})
 
-	assertPop(t, q, vc, "owner1", "task2") // because it's highest priority for owner 1
+	assertPop(t, q, vc, task2UUID, "owner1", "task2") // because it's highest priority for owner 1
 	assertQueued(map[string]int{"owner1": 2, "owner2": 2})
 	assertActive(map[string]int{"owner1": 1})
 
-	assertPop(t, q, vc, "owner2", "task5") // because it's highest priority for owner 2
+	assertPop(t, q, vc, task5UUID, "owner2", "task5") // because it's highest priority for owner 2
 	assertQueued(map[string]int{"owner1": 2, "owner2": 1})
 	assertActive(map[string]int{"owner1": 1, "owner2": 1})
 
-	assertPop(t, q, vc, "owner1", "task1")
+	assertPop(t, q, vc, task1UUID, "owner1", "task1")
 	assertQueued(map[string]int{"owner1": 1, "owner2": 1})
 	assertActive(map[string]int{"owner1": 2, "owner2": 1})
-	assertTasks("owner1", []string{`task4`}, []string{})
-	assertTasks("owner2", []string{`task3`}, []string{})
+	assertTasks("owner1", []string{"0198603f-1278-7000-8ef6-384876655d1b|task4"}, []string{})
+	assertTasks("owner2", []string{"0198603f-0e90-7000-95b3-58675999c4b7|task3"}, []string{})
 
 	// mark task2 and task1 (owner1) as complete
 	q.Done(ctx, vc, "owner1")
@@ -114,15 +117,15 @@ func TestFair(t *testing.T) {
 	assertQueued(map[string]int{"owner1": 1, "owner2": 1})
 	assertActive(map[string]int{"owner2": 1})
 
-	assertPop(t, q, vc, "owner1", "task4")
-	assertPop(t, q, vc, "owner2", "task3")
+	assertPop(t, q, vc, task4UUID, "owner1", "task4")
+	assertPop(t, q, vc, task3UUID, "owner2", "task3")
 	assertTasks("owner1", []string{}, []string{})
 	assertTasks("owner2", []string{}, []string{})
 
 	assertQueued(map[string]int{})
 	assertActive(map[string]int{"owner1": 1, "owner2": 2})
 
-	assertPop(t, q, vc, "", "") // no more tasks
+	assertPop(t, q, vc, "", "", "") // no more tasks
 	assertTasks("owner1", []string{}, []string{})
 	assertTasks("owner2", []string{}, []string{})
 
@@ -137,12 +140,12 @@ func TestFair(t *testing.T) {
 	assertQueued(map[string]int{})
 	assertActive(map[string]int{})
 
-	q.Push(ctx, vc, "owner1", false, []byte(`task6`))
-	q.Push(ctx, vc, "owner1", false, []byte(`task7`))
-	q.Push(ctx, vc, "owner2", false, []byte(`task8`))
-	q.Push(ctx, vc, "owner2", false, []byte(`task9`))
+	task6UUID := assertPush(t, q, vc, "owner1", false, []byte(`task6`))
+	task7UUID := assertPush(t, q, vc, "owner1", false, []byte(`task7`))
+	task8UUID := assertPush(t, q, vc, "owner2", false, []byte(`task8`))
+	task9UUID := assertPush(t, q, vc, "owner2", false, []byte(`task9`))
 
-	assertPop(t, q, vc, "owner1", "task6")
+	assertPop(t, q, vc, task6UUID, "owner1", "task6")
 
 	q.Pause(ctx, vc, "owner1")
 	q.Pause(ctx, vc, "owner1") // no-op if already paused
@@ -154,9 +157,9 @@ func TestFair(t *testing.T) {
 	assert.NoError(t, err)
 	assert.ElementsMatch(t, []string{"owner1"}, paused)
 
-	assertPop(t, q, vc, "owner2", "task8")
-	assertPop(t, q, vc, "owner2", "task9")
-	assertPop(t, q, vc, "", "") // no more tasks
+	assertPop(t, q, vc, task8UUID, "owner2", "task8")
+	assertPop(t, q, vc, task9UUID, "owner2", "task9")
+	assertPop(t, q, vc, "", "", "") // no more tasks
 
 	q.Resume(ctx, vc, "owner1")
 	q.Resume(ctx, vc, "owner1") // no-op if already active
@@ -168,7 +171,7 @@ func TestFair(t *testing.T) {
 	assert.NoError(t, err)
 	assert.ElementsMatch(t, []string{}, paused)
 
-	assertPop(t, q, vc, "owner1", "task7")
+	assertPop(t, q, vc, task7UUID, "owner1", "task7")
 
 	q.Done(ctx, vc, "owner1")
 	q.Done(ctx, vc, "owner1")
@@ -179,18 +182,18 @@ func TestFair(t *testing.T) {
 	assertActive(map[string]int{})
 
 	// if we somehow get into a state where an owner is in the queued set but doesn't have queued tasks, pop will retry
-	q.Push(ctx, vc, "owner1", false, []byte("task6"))
-	q.Push(ctx, vc, "owner2", false, []byte("task7"))
+	assertPush(t, q, vc, "owner1", false, []byte("task10"))
+	task11UUID := assertPush(t, q, vc, "owner2", false, []byte("task11"))
 
 	assertQueued(map[string]int{"owner1": 1, "owner2": 1})
 	assertActive(map[string]int{})
 
 	assertvk.LLen(t, vc, "{test}:o:owner1/0", 1)
-	_, err = vc.Do("DEL", "{test}:o:owner1/0")
+	_, err = vc.Do("DEL", "{test}:o:owner1/0") // task10 gone
 	assert.NoError(t, err)
 
-	assertPop(t, q, vc, "owner2", "task7")
-	assertPop(t, q, vc, "", "")
+	assertPop(t, q, vc, task11UUID, "owner2", "task11")
+	assertPop(t, q, vc, "", "", "")
 
 	assertQueued(map[string]int{})
 	assertActive(map[string]int{"owner2": 1})
@@ -212,17 +215,17 @@ func TestFairMaxActivePerOwner(t *testing.T) {
 
 	q := queues.NewFair("test", 2)
 
-	q.Push(ctx, vc, "owner1", false, []byte(`task1`))
-	q.Push(ctx, vc, "owner1", true, []byte(`task2`))
-	q.Push(ctx, vc, "owner1", false, []byte(`task3`))
+	task1UUID := assertPush(t, q, vc, "owner1", false, []byte(`task1`))
+	task2UUID := assertPush(t, q, vc, "owner1", true, []byte(`task2`))
+	task3UUID := assertPush(t, q, vc, "owner1", false, []byte(`task3`))
 
-	assertPop(t, q, vc, "owner1", "task2")
-	assertPop(t, q, vc, "owner1", "task1")
-	assertPop(t, q, vc, "", "") // owner1 has reached max active tasks
+	assertPop(t, q, vc, task2UUID, "owner1", "task2")
+	assertPop(t, q, vc, task1UUID, "owner1", "task1")
+	assertPop(t, q, vc, "", "", "") // owner1 has reached max active tasks
 
 	q.Done(ctx, vc, "owner1")
 
-	assertPop(t, q, vc, "owner1", "task3") // now we can pop task3
+	assertPop(t, q, vc, task3UUID, "owner1", "task3") // now we can pop task3
 }
 
 func TestFairConcurrency(t *testing.T) {
@@ -236,7 +239,7 @@ func TestFairConcurrency(t *testing.T) {
 	q := queues.NewFair("test", 5) // one owner can only occupy 5 of the 10 consumers at a time
 
 	type ownerAndTask struct {
-		owner string
+		owner queues.OwnerID
 		task  string
 	}
 
@@ -247,14 +250,14 @@ func TestFairConcurrency(t *testing.T) {
 	var wg sync.WaitGroup
 	var mutex sync.Mutex
 
-	recordTaskPushed := func(owner, task string) {
+	recordTaskPushed := func(owner queues.OwnerID, task string) {
 		mutex.Lock()
 		defer mutex.Unlock()
 
 		pushedTasks = append(pushedTasks, &ownerAndTask{owner: owner, task: task})
 	}
 
-	recordTaskProcessed := func(owner, task string) {
+	recordTaskProcessed := func(owner queues.OwnerID, task string) {
 		mutex.Lock()
 		defer mutex.Unlock()
 
@@ -273,9 +276,9 @@ func TestFairConcurrency(t *testing.T) {
 			defer vc.Close()
 
 			for range numTasks / 5 {
-				owner := fmt.Sprintf("owner%d", random.IntN(5)+1) // five possible owners (1...5)
+				owner := queues.OwnerID(fmt.Sprintf("owner%d", random.IntN(5)+1)) // five possible owners (1...5)
 				task := []byte(uuids.NewV7())
-				err := q.Push(ctx, vc, owner, false, task)
+				_, err := q.Push(ctx, vc, owner, false, task)
 				assert.NoError(t, err, "Producer %d failed to push task for owner %s", i, owner)
 
 				recordTaskPushed(owner, string(task))
@@ -295,7 +298,7 @@ func TestFairConcurrency(t *testing.T) {
 			defer vc.Close()
 
 			for {
-				owner, task, err := q.Pop(ctx, vc)
+				_, owner, task, err := q.Pop(ctx, vc)
 				assert.NoError(t, err, "Consumer %d failed to pop task", i)
 
 				if task != nil {
@@ -338,12 +341,23 @@ func TestFairConcurrency(t *testing.T) {
 	}
 }
 
+// assertPush is a helper function that asserts the result of a Push operation
+func assertPush(t *testing.T, q *queues.Fair, vc valkey.Conn, owner queues.OwnerID, priority bool, task []byte) queues.TaskID {
+	ctx := t.Context()
+
+	id, err := q.Push(ctx, vc, owner, priority, task)
+	assert.NoError(t, err)
+	return id
+}
+
 // assertPop is a helper function that asserts the result of a Pop operation
-func assertPop(t *testing.T, q *queues.Fair, vc valkey.Conn, expectedOwner, expectedTask string) {
-	ctx := context.Background()
-	owner, task, err := q.Pop(ctx, vc)
+func assertPop(t *testing.T, q *queues.Fair, vc valkey.Conn, expectedID queues.TaskID, expectedOwner queues.OwnerID, expectedTask string) {
+	ctx := t.Context()
+
+	uuid, owner, task, err := q.Pop(ctx, vc)
 	require.NoError(t, err)
 	if expectedTask != "" {
+		assert.Equal(t, expectedID, uuid)
 		assert.Equal(t, expectedOwner, owner)
 		assert.Equal(t, expectedTask, string(task))
 	} else {
