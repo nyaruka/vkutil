@@ -33,13 +33,13 @@ func TestFair(t *testing.T) {
 
 	q := queues.NewFair("test", 3)
 
-	assertQueued := func(expected map[string]int) {
+	assertQueued := func(expected map[queues.OwnerID]int) {
 		actualStrings, err := valkey.StringMap(vc.Do("ZRANGE", "{test}:queued", 0, -1, "WITHSCORES"))
 		require.NoError(t, err)
 
-		actual := make(map[string]int, len(actualStrings))
+		actual := make(map[queues.OwnerID]int, len(actualStrings))
 		for k, v := range actualStrings {
-			actual[k], err = strconv.Atoi(v)
+			actual[queues.OwnerID(k)], err = strconv.Atoi(v)
 			require.NoError(t, err)
 		}
 
@@ -51,13 +51,13 @@ func TestFair(t *testing.T) {
 		assert.ElementsMatch(t, slices.Collect(maps.Keys(expected)), actualOwners)
 	}
 
-	assertActive := func(expected map[string]int) {
+	assertActive := func(expected map[queues.OwnerID]int) {
 		actualStrings, err := valkey.StringMap(vc.Do("ZRANGE", "{test}:active", 0, -1, "WITHSCORES"))
 		require.NoError(t, err)
 
-		actual := make(map[string]int, len(actualStrings))
+		actual := make(map[queues.OwnerID]int, len(actualStrings))
 		for k, v := range actualStrings {
-			actual[k], err = strconv.Atoi(v)
+			actual[queues.OwnerID(k)], err = strconv.Atoi(v)
 			require.NoError(t, err)
 		}
 
@@ -79,8 +79,8 @@ func TestFair(t *testing.T) {
 		assert.Equal(t, len(expected0)+len(expected1), size)
 	}
 
-	assertQueued(map[string]int{})
-	assertActive(map[string]int{})
+	assertQueued(map[queues.OwnerID]int{})
+	assertActive(map[queues.OwnerID]int{})
 	assertTasks("owner1", []string{}, []string{})
 	assertTasks("owner2", []string{}, []string{})
 
@@ -91,22 +91,22 @@ func TestFair(t *testing.T) {
 	task5UUID := assertPush(t, q, vc, "owner2", true, []byte(`task5`))
 
 	// nobody processing any tasks so no workers assigned in active set
-	assertQueued(map[string]int{"owner1": 3, "owner2": 2})
-	assertActive(map[string]int{})
+	assertQueued(map[queues.OwnerID]int{"owner1": 3, "owner2": 2})
+	assertActive(map[queues.OwnerID]int{})
 	assertTasks("owner1", []string{"0198603f-06c0-7000-aded-7d8b151cbd5b|task1", "0198603f-1278-7000-8ef6-384876655d1b|task4"}, []string{"0198603f-0aa8-7000-b664-880fc7581c77|task2"})
 	assertTasks("owner2", []string{"0198603f-0e90-7000-95b3-58675999c4b7|task3"}, []string{"0198603f-1660-7000-8ab6-9b9af5cd042a|task5"})
 
 	assertPop(t, q, vc, task2UUID, "owner1", "task2") // because it's highest priority for owner 1
-	assertQueued(map[string]int{"owner1": 2, "owner2": 2})
-	assertActive(map[string]int{"owner1": 1})
+	assertQueued(map[queues.OwnerID]int{"owner1": 2, "owner2": 2})
+	assertActive(map[queues.OwnerID]int{"owner1": 1})
 
 	assertPop(t, q, vc, task5UUID, "owner2", "task5") // because it's highest priority for owner 2
-	assertQueued(map[string]int{"owner1": 2, "owner2": 1})
-	assertActive(map[string]int{"owner1": 1, "owner2": 1})
+	assertQueued(map[queues.OwnerID]int{"owner1": 2, "owner2": 1})
+	assertActive(map[queues.OwnerID]int{"owner1": 1, "owner2": 1})
 
 	assertPop(t, q, vc, task1UUID, "owner1", "task1")
-	assertQueued(map[string]int{"owner1": 1, "owner2": 1})
-	assertActive(map[string]int{"owner1": 2, "owner2": 1})
+	assertQueued(map[queues.OwnerID]int{"owner1": 1, "owner2": 1})
+	assertActive(map[queues.OwnerID]int{"owner1": 2, "owner2": 1})
 	assertTasks("owner1", []string{"0198603f-1278-7000-8ef6-384876655d1b|task4"}, []string{})
 	assertTasks("owner2", []string{"0198603f-0e90-7000-95b3-58675999c4b7|task3"}, []string{})
 
@@ -114,31 +114,31 @@ func TestFair(t *testing.T) {
 	q.Done(ctx, vc, "owner1")
 	q.Done(ctx, vc, "owner1")
 
-	assertQueued(map[string]int{"owner1": 1, "owner2": 1})
-	assertActive(map[string]int{"owner2": 1})
+	assertQueued(map[queues.OwnerID]int{"owner1": 1, "owner2": 1})
+	assertActive(map[queues.OwnerID]int{"owner2": 1})
 
 	assertPop(t, q, vc, task4UUID, "owner1", "task4")
 	assertPop(t, q, vc, task3UUID, "owner2", "task3")
 	assertTasks("owner1", []string{}, []string{})
 	assertTasks("owner2", []string{}, []string{})
 
-	assertQueued(map[string]int{})
-	assertActive(map[string]int{"owner1": 1, "owner2": 2})
+	assertQueued(map[queues.OwnerID]int{})
+	assertActive(map[queues.OwnerID]int{"owner1": 1, "owner2": 2})
 
 	assertPop(t, q, vc, "", "", "") // no more tasks
 	assertTasks("owner1", []string{}, []string{})
 	assertTasks("owner2", []string{}, []string{})
 
-	assertQueued(map[string]int{})
-	assertActive(map[string]int{"owner1": 1, "owner2": 2})
+	assertQueued(map[queues.OwnerID]int{})
+	assertActive(map[queues.OwnerID]int{"owner1": 1, "owner2": 2})
 
 	// mark remaining tasks as complete
 	q.Done(ctx, vc, "owner1")
 	q.Done(ctx, vc, "owner2")
 	q.Done(ctx, vc, "owner2")
 
-	assertQueued(map[string]int{})
-	assertActive(map[string]int{})
+	assertQueued(map[queues.OwnerID]int{})
+	assertActive(map[queues.OwnerID]int{})
 
 	task6UUID := assertPush(t, q, vc, "owner1", false, []byte(`task6`))
 	task7UUID := assertPush(t, q, vc, "owner1", false, []byte(`task7`))
@@ -150,12 +150,12 @@ func TestFair(t *testing.T) {
 	q.Pause(ctx, vc, "owner1")
 	q.Pause(ctx, vc, "owner1") // no-op if already paused
 
-	assertQueued(map[string]int{"owner1": 1, "owner2": 2})
-	assertActive(map[string]int{"owner1": 1})
+	assertQueued(map[queues.OwnerID]int{"owner1": 1, "owner2": 2})
+	assertActive(map[queues.OwnerID]int{"owner1": 1})
 
 	paused, err := q.Paused(ctx, vc)
 	assert.NoError(t, err)
-	assert.ElementsMatch(t, []string{"owner1"}, paused)
+	assert.ElementsMatch(t, []queues.OwnerID{"owner1"}, paused)
 
 	assertPop(t, q, vc, task8UUID, "owner2", "task8")
 	assertPop(t, q, vc, task9UUID, "owner2", "task9")
@@ -164,8 +164,8 @@ func TestFair(t *testing.T) {
 	q.Resume(ctx, vc, "owner1")
 	q.Resume(ctx, vc, "owner1") // no-op if already active
 
-	assertQueued(map[string]int{"owner1": 1})
-	assertActive(map[string]int{"owner1": 1, "owner2": 2})
+	assertQueued(map[queues.OwnerID]int{"owner1": 1})
+	assertActive(map[queues.OwnerID]int{"owner1": 1, "owner2": 2})
 
 	paused, err = q.Paused(ctx, vc)
 	assert.NoError(t, err)
@@ -178,15 +178,15 @@ func TestFair(t *testing.T) {
 	q.Done(ctx, vc, "owner2")
 	q.Done(ctx, vc, "owner2")
 
-	assertQueued(map[string]int{})
-	assertActive(map[string]int{})
+	assertQueued(map[queues.OwnerID]int{})
+	assertActive(map[queues.OwnerID]int{})
 
 	// if we somehow get into a state where an owner is in the queued set but doesn't have queued tasks, pop will retry
 	assertPush(t, q, vc, "owner1", false, []byte("task10"))
 	task11UUID := assertPush(t, q, vc, "owner2", false, []byte("task11"))
 
-	assertQueued(map[string]int{"owner1": 1, "owner2": 1})
-	assertActive(map[string]int{})
+	assertQueued(map[queues.OwnerID]int{"owner1": 1, "owner2": 1})
+	assertActive(map[queues.OwnerID]int{})
 
 	assertvk.LLen(t, vc, "{test}:o:owner1/0", 1)
 	_, err = vc.Do("DEL", "{test}:o:owner1/0") // task10 gone
@@ -195,14 +195,14 @@ func TestFair(t *testing.T) {
 	assertPop(t, q, vc, task11UUID, "owner2", "task11")
 	assertPop(t, q, vc, "", "", "")
 
-	assertQueued(map[string]int{})
-	assertActive(map[string]int{"owner2": 1})
+	assertQueued(map[queues.OwnerID]int{})
+	assertActive(map[queues.OwnerID]int{"owner2": 1})
 
 	// if we somehow call done too many times, we never get negative workers
 	q.Done(ctx, vc, "owner2")
 	q.Done(ctx, vc, "owner2")
 
-	assertActive(map[string]int{})
+	assertActive(map[queues.OwnerID]int{})
 }
 
 func TestFairMaxActivePerOwner(t *testing.T) {
