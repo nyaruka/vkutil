@@ -1,7 +1,6 @@
 package queues_test
 
 import (
-	"context"
 	"fmt"
 	"maps"
 	"math/rand"
@@ -22,7 +21,7 @@ import (
 )
 
 func TestFair(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	vp := assertvk.TestDB()
 	vc := vp.Get()
 	defer vc.Close()
@@ -205,8 +204,24 @@ func TestFair(t *testing.T) {
 	assertActive(map[queues.OwnerID]int{})
 }
 
+func TestTaskPayloads(t *testing.T) {
+	vp := assertvk.TestDB()
+	vc := vp.Get()
+	defer vc.Close()
+
+	defer assertvk.FlushDB()
+
+	q := queues.NewFair("test", 2)
+
+	task1UUID := assertPush(t, q, vc, "owner1", true, []byte(`{"foo": "|"}`))
+	task2UUID := assertPush(t, q, vc, "owner1", true, []byte(`task2`))
+
+	assertPop(t, q, vc, task1UUID, "owner1", `{"foo": "|"}`)
+	assertPop(t, q, vc, task2UUID, "owner1", "task2")
+}
+
 func TestFairMaxActivePerOwner(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	vp := assertvk.TestDB()
 	vc := vp.Get()
 	defer vc.Close()
@@ -229,7 +244,7 @@ func TestFairMaxActivePerOwner(t *testing.T) {
 }
 
 func TestFairConcurrency(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	vp := assertvk.TestDB()
 	vc := vp.Get()
 	defer vc.Close()
