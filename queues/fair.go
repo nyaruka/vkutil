@@ -123,20 +123,30 @@ func (q *Fair) Resume(ctx context.Context, vc valkey.Conn, owner OwnerID) error 
 }
 
 // Paused returns the list of owners marked as paused
-func (q *Fair) Paused(ctx context.Context, vc valkey.Conn) ([]string, error) {
-	owners, err := valkey.Strings(valkey.DoContext(vc, ctx, "SMEMBERS", q.pausedKey()))
+func (q *Fair) Paused(ctx context.Context, vc valkey.Conn) ([]OwnerID, error) {
+	strs, err := valkey.Strings(valkey.DoContext(vc, ctx, "SMEMBERS", q.pausedKey()))
 	if err != nil {
 		return nil, err
+	}
+
+	owners := make([]OwnerID, len(strs))
+	for i, str := range strs {
+		owners[i] = OwnerID(str)
 	}
 
 	return owners, nil
 }
 
 // Queued returns the list of owners with queued tasks
-func (q *Fair) Queued(ctx context.Context, vc valkey.Conn) ([]string, error) {
-	owners, err := valkey.Strings(valkey.DoContext(vc, ctx, "ZRANGE", q.queuedKey(), 0, -1))
+func (q *Fair) Queued(ctx context.Context, vc valkey.Conn) ([]OwnerID, error) {
+	strs, err := valkey.Strings(valkey.DoContext(vc, ctx, "ZRANGE", q.queuedKey(), 0, -1))
 	if err != nil {
 		return nil, err
+	}
+
+	owners := make([]OwnerID, len(strs))
+	for i, str := range strs {
+		owners[i] = OwnerID(str)
 	}
 
 	return owners, nil
