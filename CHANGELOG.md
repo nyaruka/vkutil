@@ -1,3 +1,8 @@
+v0.20.0 (2025-08-01)
+-------------------------
+ * Add queues.Fair.Dump for debugging
+ * Remove workaround for id-less tasks
+
 v0.19.2 (2025-07-31)
 -------------------------
  * Fix tests
