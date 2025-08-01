@@ -78,10 +78,17 @@ func TestFair(t *testing.T) {
 		assert.Equal(t, len(expected0)+len(expected1), size)
 	}
 
+	assertDump := func(expected string) {
+		dump, err := q.Dump(ctx, vc)
+		require.NoError(t, err)
+		assert.JSONEq(t, expected, string(dump), "dumped queue state does not match expected")
+	}
+
 	assertQueued(map[queues.OwnerID]int{})
 	assertActive(map[queues.OwnerID]int{})
 	assertTasks("owner1", []string{}, []string{})
 	assertTasks("owner2", []string{}, []string{})
+	assertDump(`{"queued": {}, "active": {}, "paused": {}}`)
 
 	task1UUID := assertPush(t, q, vc, "owner1", false, []byte(`task1`))
 	task2UUID := assertPush(t, q, vc, "owner1", true, []byte(`task2`))
@@ -108,6 +115,7 @@ func TestFair(t *testing.T) {
 	assertActive(map[queues.OwnerID]int{"owner1": 2, "owner2": 1})
 	assertTasks("owner1", []string{"0198603f-1278-7000-8ef6-384876655d1b|task4"}, []string{})
 	assertTasks("owner2", []string{"0198603f-0e90-7000-95b3-58675999c4b7|task3"}, []string{})
+	assertDump(`{"queued": {"owner1": 1, "owner2": 1}, "active": {"owner1": 2, "owner2": 1}, "paused": {}}`)
 
 	// mark task2 and task1 (owner1) as complete
 	q.Done(ctx, vc, "owner1")
@@ -151,6 +159,7 @@ func TestFair(t *testing.T) {
 
 	assertQueued(map[queues.OwnerID]int{"owner1": 1, "owner2": 2})
 	assertActive(map[queues.OwnerID]int{"owner1": 1})
+	assertDump(`{"queued": {"owner1": 1, "owner2": 2}, "active": {"owner1": 1}, "paused": {"owner1": 1}}`)
 
 	paused, err := q.Paused(ctx, vc)
 	assert.NoError(t, err)
