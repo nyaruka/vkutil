@@ -166,6 +166,19 @@ func (q *Fair) Size(ctx context.Context, vc valkey.Conn, owner OwnerID) (int, er
 	return counts[0] + counts[1], nil
 }
 
+//go:embed lua/fair_dump.lua
+var luaFairDump string
+var scriptFairDump = valkey.NewScript(3, luaFairDump)
+
+func (q *Fair) Dump(ctx context.Context, vc valkey.Conn) ([]byte, error) {
+	dump, err := valkey.Bytes(scriptFairDump.Do(vc, q.queuedKey(), q.activeKey(), q.pausedKey()))
+	if err != nil {
+		return nil, fmt.Errorf("error dumping queue state: %w", err)
+	}
+
+	return dump, nil
+}
+
 func (q *Fair) queuedKey() string {
 	return fmt.Sprintf("{%s}:queued", q.keyBase)
 }
