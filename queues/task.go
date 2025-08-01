@@ -7,17 +7,19 @@ import (
 	"github.com/nyaruka/gocommon/uuids"
 )
 
-type TaskID uuids.UUID
+// TaskID is the unique identifier for a task in the queue.
+type TaskID string
+
+// OwnerID is the identifier for an owner of tasks in the queue.
 type OwnerID string
+
+func newTaskID() TaskID {
+	return TaskID(uuids.NewV7())
+}
 
 func parsePayload(raw []byte) (TaskID, []byte, error) {
 	if len(raw) == 0 {
 		return "", nil, fmt.Errorf("empty task payload")
-	}
-
-	// TODO workaround for tasks without UUIDs
-	if raw[0] == '{' {
-		return "", raw, nil
 	}
 
 	parts := bytes.SplitN(raw, []byte{'|'}, 2)
