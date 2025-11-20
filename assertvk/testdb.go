@@ -45,7 +45,7 @@ func FlushDB() {
 func getHostAddress() string {
 	host := os.Getenv("VALKEY_HOST")
 	if host == "" {
-		host = "localhost"
+		host = "valkey"
 	}
 	return host + ":6379"
 }
