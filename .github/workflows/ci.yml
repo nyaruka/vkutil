@@ -13,7 +13,7 @@ jobs:
         ports:
           - 6372:6379
       valkey8:
-        image: valkey/valkey:8.0-alpine
+        image: valkey/valkey:8.1-alpine
         ports:
           - 6380:6379
 
