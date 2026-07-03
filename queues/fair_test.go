@@ -3,7 +3,7 @@ package queues_test
 import (
 	"fmt"
 	"maps"
-	"math/rand"
+	"math/rand/v2"
 	"slices"
 	"strconv"
 	"sync"
@@ -11,9 +11,7 @@ import (
 	"time"
 
 	valkey "github.com/gomodule/redigo/redis"
-	"github.com/nyaruka/gocommon/dates"
-	"github.com/nyaruka/gocommon/random"
-	"github.com/nyaruka/gocommon/uuids"
+	"github.com/google/uuid"
 	"github.com/nyaruka/vkutil/assertvk"
 	"github.com/nyaruka/vkutil/queues"
 	"github.com/stretchr/testify/assert"
@@ -26,7 +24,12 @@ func TestFair(t *testing.T) {
 	vc := vp.Get()
 	defer vc.Close()
 
-	uuids.SetGenerator(uuids.NewSeededGenerator(1234, dates.NewSequentialNow(time.Date(2025, 7, 31, 11, 30, 0, 0, time.UTC), time.Second)))
+	numIDs := 0
+	queues.SetNewTaskID(func() queues.TaskID {
+		numIDs++
+		return queues.TaskID(fmt.Sprintf("01980000-0000-7000-8000-%012d", numIDs))
+	})
+	defer queues.SetNewTaskID(nil)
 
 	defer assertvk.FlushDB()
 
@@ -99,8 +102,8 @@ func TestFair(t *testing.T) {
 	// nobody processing any tasks so no workers assigned in active set
 	assertQueued(map[queues.OwnerID]int{"owner1": 3, "owner2": 2})
 	assertActive(map[queues.OwnerID]int{})
-	assertTasks("owner1", []string{"0198603f-06c0-7000-aded-7d8b151cbd5b|task1", "0198603f-1278-7000-8ef6-384876655d1b|task4"}, []string{"0198603f-0aa8-7000-b664-880fc7581c77|task2"})
-	assertTasks("owner2", []string{"0198603f-0e90-7000-95b3-58675999c4b7|task3"}, []string{"0198603f-1660-7000-8ab6-9b9af5cd042a|task5"})
+	assertTasks("owner1", []string{"01980000-0000-7000-8000-000000000001|task1", "01980000-0000-7000-8000-000000000004|task4"}, []string{"01980000-0000-7000-8000-000000000002|task2"})
+	assertTasks("owner2", []string{"01980000-0000-7000-8000-000000000003|task3"}, []string{"01980000-0000-7000-8000-000000000005|task5"})
 
 	assertPop(t, q, vc, task2UUID, "owner1", "task2") // because it's highest priority for owner 1
 	assertQueued(map[queues.OwnerID]int{"owner1": 2, "owner2": 2})
@@ -113,8 +116,8 @@ func TestFair(t *testing.T) {
 	assertPop(t, q, vc, task1UUID, "owner1", "task1")
 	assertQueued(map[queues.OwnerID]int{"owner1": 1, "owner2": 1})
 	assertActive(map[queues.OwnerID]int{"owner1": 2, "owner2": 1})
-	assertTasks("owner1", []string{"0198603f-1278-7000-8ef6-384876655d1b|task4"}, []string{})
-	assertTasks("owner2", []string{"0198603f-0e90-7000-95b3-58675999c4b7|task3"}, []string{})
+	assertTasks("owner1", []string{"01980000-0000-7000-8000-000000000004|task4"}, []string{})
+	assertTasks("owner2", []string{"01980000-0000-7000-8000-000000000003|task3"}, []string{})
 	assertDump(`{"queued": {"owner1": 1, "owner2": 1}, "active": {"owner1": 2, "owner2": 1}, "paused": {}}`)
 
 	// mark task2 and task1 (owner1) as complete
@@ -288,8 +291,6 @@ func TestFairConcurrency(t *testing.T) {
 		poppedTasks = append(poppedTasks, &ownerAndTask{owner: owner, task: task})
 	}
 
-	random.IntN(5)
-
 	// Start 5 producers to push tasks each concurrently
 	for i := range 5 {
 		wg.Add(1)
@@ -300,14 +301,14 @@ func TestFairConcurrency(t *testing.T) {
 			defer vc.Close()
 
 			for range numTasks / 5 {
-				owner := queues.OwnerID(fmt.Sprintf("owner%d", random.IntN(5)+1)) // five possible owners (1...5)
-				task := []byte(uuids.NewV7())
+				owner := queues.OwnerID(fmt.Sprintf("owner%d", rand.IntN(5)+1)) // five possible owners (1...5)
+				task := []byte(uuid.Must(uuid.NewV7()).String())
 				_, err := q.Push(ctx, vc, owner, false, task)
 				assert.NoError(t, err, "Producer %d failed to push task for owner %s", i, owner)
 
 				recordTaskPushed(owner, string(task))
 
-				time.Sleep(time.Duration(rand.Intn(5)) * time.Millisecond)
+				time.Sleep(time.Duration(rand.IntN(5)) * time.Millisecond)
 			}
 		}()
 	}
@@ -326,7 +327,7 @@ func TestFairConcurrency(t *testing.T) {
 				assert.NoError(t, err, "Consumer %d failed to pop task", i)
 
 				if task != nil {
-					time.Sleep(time.Duration(rand.Intn(5)) * time.Millisecond)
+					time.Sleep(time.Duration(rand.IntN(5)) * time.Millisecond)
 
 					err = q.Done(ctx, vc, owner)
 					assert.NoError(t, err, "Consumer %d failed to mark task done", i)
