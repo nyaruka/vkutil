@@ -1,3 +1,8 @@
+v0.21.0 (2026-07-03)
+-------------------------
+ * Remove gocommon dependency
+ * Bump valkey from 8.0 to 8.1 in CI
+
 v0.20.0 (2025-08-01)
 -------------------------
  * Add queues.Fair.Dump for debugging
