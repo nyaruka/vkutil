@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nyaruka/gocommon/dates"
 	"github.com/nyaruka/vkutil"
 	"github.com/nyaruka/vkutil/assertvk"
 	"github.com/stretchr/testify/assert"
@@ -19,8 +18,8 @@ func TestIntervalSeries(t *testing.T) {
 
 	defer assertvk.FlushDB()
 
-	defer dates.SetNowFunc(time.Now)
-	setNow := func(d time.Time) { dates.SetNowFunc(dates.NewFixedNow(d)) }
+	defer vkutil.SetNow(time.Now)
+	setNow := func(d time.Time) { vkutil.SetNow(func() time.Time { return d }) }
 
 	assertGet := func(s *vkutil.IntervalSeries, f string, expected []int64) {
 		actual, err := s.Get(ctx, vc, f)

@@ -2,13 +2,15 @@ package vkutil
 
 import (
 	"fmt"
+	"math/rand/v2"
 	"strconv"
 	"time"
 
 	valkey "github.com/gomodule/redigo/redis"
-	"github.com/nyaruka/gocommon/dates"
-	"github.com/nyaruka/gocommon/random"
 )
+
+// timeNow can be overridden in tests to use a fixed time source
+var timeNow = time.Now
 
 // StringsWithScores parses an array reply which is alternating pairs of strings and scores (floats)
 func StringsWithScores(reply any, err error) ([]string, []float64, error) {
@@ -49,7 +51,7 @@ func intervalTimestamp(t time.Time, interval time.Duration) string {
 }
 
 func intervalKeys(keyBase string, interval time.Duration, size int) []string {
-	now := dates.Now()
+	now := timeNow()
 	keys := make([]string, size)
 	for i := range keys {
 		timestamp := intervalTimestamp(now.Add(-interval*time.Duration(i)), interval)
@@ -64,7 +66,7 @@ const base64Charset = `ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz01234
 func RandomBase64(n int) string {
 	b := make([]byte, n)
 	for i := range b {
-		b[i] = base64Charset[random.IntN(64)]
+		b[i] = base64Charset[rand.IntN(64)]
 	}
 	return string(b)
 }
