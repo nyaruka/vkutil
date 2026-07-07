@@ -98,21 +98,6 @@ series.Get(ctx, vc, "B")   // [1, 0, 0]
 series.Get(ctx, vc, "C")   // [0, 0, 0]
 ```
 
-## Queues
-
-### Fair
-
-```go
-import "github.com/nyaruka/vkutil/queues"
-
-queue := queues.NewFair("jobs", 10)
-queue.Push(ctx, vc, "owner1", true, []byte(`{...}`))
-queue.Push(ctx, vc, "owner2", false, []byte(`{...}`))
-owner, task, err := queue.Pop(ctx, vc)
-...
-queue.Done(ctx, vc, owner)
-```
-
 ## Locks
 
 ### Locker
