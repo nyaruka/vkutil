@@ -1,5 +1,4 @@
-# 🧰 vkutil [![Build Status](https://github.com/nyaruka/vkutil/workflows/CI/badge.svg)](https://github.com/nyaruka/vkutil/actions?query=workflow%3ACI) [![Go Report Card](https://goreportcard.com/badge/github.com/nyaruka/vkutil)](https://goreportcard.com/report/github.com/nyaruka/vkutil)
-
+# 🧰 vkutil [![Build Status](https://github.com/nyaruka/vkutil/workflows/CI/badge.svg)](https://github.com/nyaruka/vkutil/actions?query=workflow%3ACI)
 A go library of [Valkey](https://valkey.io) utilities built on the [redigo](github.com/gomodule/redigo) client library.
 
 > [!IMPORTANT]
