@@ -28,11 +28,4 @@ jobs:
     - name: Run tests
       env:
         VALKEY_HOST: ${{ matrix.valkey-host }}
-      run: go test -p=1 -coverprofile=coverage.text -covermode=atomic ./...
-
-    - name: Upload coverage
-      if: success()
-      uses: codecov/codecov-action@v5
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        fail_ci_if_error: true
+      run: go test -p=1 ./...
