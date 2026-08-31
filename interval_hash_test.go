@@ -178,3 +178,35 @@ func TestNewIntervalHashValidation(t *testing.T) {
 		vkutil.NewIntervalHash("foos", time.Minute, -1)
 	})
 }
+
+func TestIntervalHashMGetAcrossIntervals(t *testing.T) {
+	ctx := context.Background()
+	vp := assertvk.TestDB()
+	vc := vp.Get()
+	defer vc.Close()
+
+	defer assertvk.FlushDB()
+	defer vkutil.SetNow(time.Now)
+
+	setNow := func(d time.Time) { vkutil.SetNow(func() time.Time { return d }) }
+
+	hash := vkutil.NewIntervalHash("foos", time.Hour*24, 2)
+
+	// C only exists in the older of the two intervals
+	setNow(time.Date(2021, 11, 17, 12, 0, 0, 0, time.UTC))
+	require.NoError(t, hash.Set(ctx, vc, "C", "3"))
+
+	setNow(time.Date(2021, 11, 18, 12, 0, 0, 0, time.UTC))
+	require.NoError(t, hash.Set(ctx, vc, "A", "1"))
+	require.NoError(t, hash.Set(ctx, vc, "B", "2"))
+
+	// asking for more fields than there are intervals must still search the older intervals
+	actual, err := hash.MGet(ctx, vc, "A", "B", "C")
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"1", "2", "3"}, actual)
+
+	// whatever order the fields are asked for in
+	actual, err = hash.MGet(ctx, vc, "C", "A", "B")
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"3", "1", "2"}, actual)
+}
