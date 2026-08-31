@@ -1,3 +1,16 @@
+v0.23.0 (2026-08-31)
+-------------------------
+ * Add TLS support via valkeys:// and rediss:// URL schemes
+ * Add ACL style AUTH for URLs which include a username
+ * Fix connection leak when a pooled connection can't be initialized
+ * Fix expirations of under a second deleting keys rather than expiring them
+ * Fix IntervalHash.MGet not searching older intervals when asked for more fields than there are intervals
+ * Return errors from commands which fail inside a transaction rather than reporting success
+ * Return an error rather than panicking when StringsWithScores is given an unexpected reply
+ * Panic from constructors given a cap, size, interval or expiration which can't be honoured
+ * Reject valkey URLs with an unrecognized scheme or a non-numeric database
+ * Update to Go 1.25
+
 v0.22.0 (2026-07-07)
 -------------------------
  * Remove queues package
