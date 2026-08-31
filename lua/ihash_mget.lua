@@ -3,7 +3,7 @@ local values = {}
 local found = 0
 
 -- initialize our list of values to return to false/nils
-for i, key in ipairs(fields) do
+for i in ipairs(fields) do
 	values[i] = false
 end
 
@@ -18,7 +18,7 @@ for _, key in ipairs(KEYS) do
 	end
 
 	-- if we've found values for all fields we don't need to look in older keys
-	if (found == #KEYS) then
+	if (found == #fields) then
 		break
 	end
 end
