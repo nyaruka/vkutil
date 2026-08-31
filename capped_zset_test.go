@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	valkey "github.com/gomodule/redigo/redis"
+
 	"github.com/nyaruka/vkutil"
 	"github.com/nyaruka/vkutil/assertvk"
 	"github.com/stretchr/testify/assert"
@@ -62,4 +64,41 @@ func TestCappedZSet(t *testing.T) {
 	zset.Add(ctx, vc, "D", 4.5)
 
 	assertMembers(zset, []string{"G", "E", "D"}, []float64{3.5, 4, 4.5})
+}
+
+func TestCappedZSetExpiry(t *testing.T) {
+	ctx := context.Background()
+	vp := assertvk.TestDB()
+	vc := vp.Get()
+	defer vc.Close()
+
+	defer assertvk.FlushDB()
+
+	// an expiry of under a second must still expire the set rather than delete it immediately
+	zset := vkutil.NewCappedZSet("foo", 3, time.Millisecond*500)
+	assert.NoError(t, zset.Add(ctx, vc, "A", 1))
+
+	card, err := zset.Card(ctx, vc)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, card)
+
+	ttl, err := valkey.Int(valkey.DoContext(vc, ctx, "PTTL", "foo"))
+	assert.NoError(t, err)
+	assert.Greater(t, ttl, 0, "expected an expiry to be set")
+}
+
+func TestNewCappedZSetValidation(t *testing.T) {
+	// a cap or expire which can't be honoured is a programming error, not a runtime one
+	assert.PanicsWithValue(t, "cap must be greater than zero", func() {
+		vkutil.NewCappedZSet("foo", 0, time.Minute)
+	})
+	assert.PanicsWithValue(t, "cap must be greater than zero", func() {
+		vkutil.NewCappedZSet("foo", -1, time.Minute)
+	})
+	assert.PanicsWithValue(t, "expire must be greater than zero", func() {
+		vkutil.NewCappedZSet("foo", 3, 0)
+	})
+	assert.PanicsWithValue(t, "expire must be greater than zero", func() {
+		vkutil.NewCappedZSet("foo", 3, -time.Minute)
+	})
 }

@@ -70,3 +70,21 @@ func RandomBase64(n int) string {
 	}
 	return string(b)
 }
+
+// intervalExpire returns how long an interval key should live for, in milliseconds. Expirations are
+// expressed in milliseconds rather than seconds because a sub-second duration truncated to zero
+// seconds would cause the key to be deleted rather than expired.
+func intervalExpire(interval time.Duration, size int) int64 {
+	return (interval * time.Duration(size)).Milliseconds()
+}
+
+// checkIntervalParams panics if the given interval parameters can't be honoured. A non-positive
+// interval collapses every bucket onto the same key, and size is used as a slice length.
+func checkIntervalParams(interval time.Duration, size int) {
+	if interval <= 0 {
+		panic("interval must be greater than zero")
+	}
+	if size <= 0 {
+		panic("size must be greater than zero")
+	}
+}

@@ -102,3 +102,39 @@ func TestIntervalSeries(t *testing.T) {
 	assertTotal(series1, "B", 3)
 	assertTotal(series1, "C", 0)
 }
+
+func TestIntervalSeriesExpiry(t *testing.T) {
+	ctx := context.Background()
+	vp := assertvk.TestDB()
+	vc := vp.Get()
+	defer vc.Close()
+
+	defer assertvk.FlushDB()
+	defer vkutil.SetNow(time.Now)
+
+	vkutil.SetNow(func() time.Time { return time.Date(2021, 11, 18, 12, 7, 3, 0, time.UTC) })
+
+	// an interval of under a second must still expire the keys rather than delete them immediately
+	series := vkutil.NewIntervalSeries("foos", time.Millisecond*500, 2)
+	assert.NoError(t, series.Record(ctx, vc, "A", 5))
+
+	total, err := series.Total(ctx, vc, "A")
+	assert.NoError(t, err)
+	assert.Equal(t, int64(5), total)
+}
+
+func TestNewIntervalSeriesValidation(t *testing.T) {
+	// an interval or size which can't be honoured is a programming error, not a runtime one
+	assert.PanicsWithValue(t, "interval must be greater than zero", func() {
+		vkutil.NewIntervalSeries("foos", 0, 2)
+	})
+	assert.PanicsWithValue(t, "interval must be greater than zero", func() {
+		vkutil.NewIntervalSeries("foos", -time.Minute, 2)
+	})
+	assert.PanicsWithValue(t, "size must be greater than zero", func() {
+		vkutil.NewIntervalSeries("foos", time.Minute, 0)
+	})
+	assert.PanicsWithValue(t, "size must be greater than zero", func() {
+		vkutil.NewIntervalSeries("foos", time.Minute, -1)
+	})
+}

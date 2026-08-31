@@ -17,6 +17,8 @@ type IntervalSet struct {
 
 // NewIntervalSet creates a new empty interval set
 func NewIntervalSet(keyBase string, interval time.Duration, size int) *IntervalSet {
+	checkIntervalParams(interval, size)
+
 	return &IntervalSet{keyBase: keyBase, interval: interval, size: size}
 }
 
@@ -37,7 +39,7 @@ func (s *IntervalSet) Add(ctx context.Context, vc valkey.Conn, member string) er
 
 	vc.Send("MULTI")
 	vc.Send("SADD", key, member)
-	vc.Send("EXPIRE", key, s.size*int(s.interval/time.Second))
+	vc.Send("PEXPIRE", key, intervalExpire(s.interval, s.size))
 	_, err := valkey.DoContext(vc, ctx, "EXEC")
 	return err
 }

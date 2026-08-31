@@ -75,3 +75,63 @@ func TestLocker(t *testing.T) {
 
 	assertvk.Exists(t, vc, "test")
 }
+
+func TestLockerSubSecondExpiration(t *testing.T) {
+	ctx := context.Background()
+	vp := assertvk.TestDB()
+	vc := vp.Get()
+	defer vc.Close()
+
+	defer assertvk.FlushDB()
+
+	locker := locks.NewLocker("test", time.Minute)
+
+	lock, err := locker.Grab(ctx, vp, time.Second)
+	assert.NoError(t, err)
+	assert.NotZero(t, lock)
+
+	// extending by under a second must shorten the lock, not release it
+	err = locker.Extend(ctx, vp, lock, time.Millisecond*900)
+	assert.NoError(t, err)
+
+	assertvk.Exists(t, vc, "test")
+
+	// so nobody else can grab it
+	other, err := locker.Grab(ctx, vp, 0)
+	assert.NoError(t, err)
+	assert.Zero(t, other)
+
+	// an expiration which doesn't round to at least a millisecond is an error rather than a release
+	err = locker.Extend(ctx, vp, lock, time.Microsecond*500)
+	assert.EqualError(t, err, "lock expiration must be at least 1ms, got 500µs")
+
+	assertvk.Exists(t, vc, "test")
+
+	assert.NoError(t, locker.Release(ctx, vp, lock))
+
+	// a locker with a sub-second expiration works and actually expires
+	locker2 := locks.NewLocker("test2", time.Millisecond*300)
+	lock2, err := locker2.Grab(ctx, vp, 0)
+	assert.NoError(t, err)
+	assert.NotZero(t, lock2)
+
+	assertvk.Exists(t, vc, "test2")
+
+	time.Sleep(time.Millisecond * 400)
+
+	assertvk.NotExists(t, vc, "test2")
+
+}
+
+func TestNewLockerValidation(t *testing.T) {
+	// an expiration which can't be honoured is a programming error, not a runtime one
+	assert.PanicsWithValue(t, "expiration must be at least 1ms", func() {
+		locks.NewLocker("test", time.Microsecond)
+	})
+	assert.PanicsWithValue(t, "expiration must be at least 1ms", func() {
+		locks.NewLocker("test", 0)
+	})
+	assert.PanicsWithValue(t, "expiration must be at least 1ms", func() {
+		locks.NewLocker("test", -time.Minute)
+	})
+}

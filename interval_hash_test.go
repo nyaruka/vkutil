@@ -142,3 +142,39 @@ func TestIntervalHash(t *testing.T) {
 	assertGet(hash3, "B", "2")
 	assertGet(hash3, "C", "")
 }
+
+func TestIntervalHashExpiry(t *testing.T) {
+	ctx := context.Background()
+	vp := assertvk.TestDB()
+	vc := vp.Get()
+	defer vc.Close()
+
+	defer assertvk.FlushDB()
+	defer vkutil.SetNow(time.Now)
+
+	vkutil.SetNow(func() time.Time { return time.Date(2021, 11, 18, 12, 7, 3, 0, time.UTC) })
+
+	// an interval of under a second must still expire the keys rather than delete them immediately
+	hash := vkutil.NewIntervalHash("foos", time.Millisecond*500, 2)
+	require.NoError(t, hash.Set(ctx, vc, "A", "1"))
+
+	value, err := hash.Get(ctx, vc, "A")
+	assert.NoError(t, err)
+	assert.Equal(t, "1", value)
+}
+
+func TestNewIntervalHashValidation(t *testing.T) {
+	// an interval or size which can't be honoured is a programming error, not a runtime one
+	assert.PanicsWithValue(t, "interval must be greater than zero", func() {
+		vkutil.NewIntervalHash("foos", 0, 2)
+	})
+	assert.PanicsWithValue(t, "interval must be greater than zero", func() {
+		vkutil.NewIntervalHash("foos", -time.Minute, 2)
+	})
+	assert.PanicsWithValue(t, "size must be greater than zero", func() {
+		vkutil.NewIntervalHash("foos", time.Minute, 0)
+	})
+	assert.PanicsWithValue(t, "size must be greater than zero", func() {
+		vkutil.NewIntervalHash("foos", time.Minute, -1)
+	})
+}

@@ -15,8 +15,17 @@ type CappedZSet struct {
 	expire time.Duration
 }
 
-// NewCappedZSet creates a new capped sorted set
+// NewCappedZSet creates a new capped sorted set. It panics if cap or expire aren't positive, as
+// neither can be honoured: a non-positive cap empties the set on every add, and a non-positive
+// expire deletes it.
 func NewCappedZSet(key string, cap int, expire time.Duration) *CappedZSet {
+	if cap <= 0 {
+		panic("cap must be greater than zero")
+	}
+	if expire <= 0 {
+		panic("expire must be greater than zero")
+	}
+
 	return &CappedZSet{key: key, cap: cap, expire: expire}
 }
 
@@ -26,7 +35,7 @@ var czsetAddScript = valkey.NewScript(1, czsetAdd)
 
 // Add adds an element to the set, if its score puts in the top `cap` members
 func (z *CappedZSet) Add(ctx context.Context, vc valkey.Conn, member string, score float64) error {
-	_, err := czsetAddScript.DoContext(ctx, vc, z.key, score, member, z.cap, int(z.expire/time.Second))
+	_, err := czsetAddScript.DoContext(ctx, vc, z.key, score, member, z.cap, z.expire.Milliseconds())
 	return err
 }
 
