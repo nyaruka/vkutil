@@ -133,3 +133,23 @@ func TestIntervalSet(t *testing.T) {
 	assertIsMember(set3, "B")
 	assertNotIsMember(set3, "C")
 }
+
+func TestIntervalSetSubSecondInterval(t *testing.T) {
+	ctx := context.Background()
+	vp := assertvk.TestDB()
+	vc := vp.Get()
+	defer vc.Close()
+
+	defer assertvk.FlushDB()
+	defer vkutil.SetNow(time.Now)
+
+	vkutil.SetNow(func() time.Time { return time.Date(2021, 11, 18, 12, 7, 3, 0, time.UTC) })
+
+	// an interval of under a second must still expire the keys rather than delete them immediately
+	set := vkutil.NewIntervalSet("foos", time.Millisecond*500, 2)
+	assert.NoError(t, set.Add(ctx, vc, "A"))
+
+	isMember, err := set.IsMember(ctx, vc, "A")
+	assert.NoError(t, err)
+	assert.True(t, isMember)
+}

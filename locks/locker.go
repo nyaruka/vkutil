@@ -26,13 +26,17 @@ func NewLocker(key string, expiration time.Duration) *Locker {
 // It will retry every second until the retry period has ended, returning empty string if not
 // acquired in that time.
 func (l *Locker) Grab(ctx context.Context, vp *valkey.Pool, retry time.Duration) (string, error) {
-	value := vkutil.RandomBase64(10)           // generate our lock value
-	expires := int(l.expiration / time.Second) // convert our expiration to seconds
+	expires, err := expireMillis(l.expiration)
+	if err != nil {
+		return "", err
+	}
+
+	value := vkutil.RandomBase64(10) // generate our lock value
 
 	start := time.Now()
 	for {
 		vc := vp.Get()
-		success, err := valkey.DoContext(vc, ctx, "SET", l.key, value, "EX", expires, "NX")
+		success, err := valkey.DoContext(vc, ctx, "SET", l.key, value, "PX", expires, "NX")
 		vc.Close()
 
 		if err != nil {
@@ -73,14 +77,28 @@ var lockerExtendScript = valkey.NewScript(1, lockerExtend)
 
 // Extend extends our lock expiration by the passed in number of seconds provided the lock value is correct
 func (l *Locker) Extend(ctx context.Context, vp *valkey.Pool, value string, expiration time.Duration) error {
+	expires, err := expireMillis(expiration)
+	if err != nil {
+		return err
+	}
+
 	vc := vp.Get()
 	defer vc.Close()
 
-	seconds := int(expiration / time.Second) // convert our expiration to seconds
-
 	// we use lua here because we only want to set the expiration time if we own it
-	_, err := lockerExtendScript.DoContext(ctx, vc, l.key, value, seconds)
+	_, err = lockerExtendScript.DoContext(ctx, vc, l.key, value, expires)
 	return err
+}
+
+// expireMillis converts a lock expiration to milliseconds, rejecting durations which don't round to
+// at least one millisecond. Such a duration would otherwise delete the lock rather than expire it,
+// silently handing it to another process whilst the current holder still believes it owns it.
+func expireMillis(d time.Duration) (int64, error) {
+	ms := d.Milliseconds()
+	if ms < 1 {
+		return 0, fmt.Errorf("lock expiration must be at least 1ms, got %s", d)
+	}
+	return ms, nil
 }
 
 // IsLocked returns whether this lock is currently held by any process.

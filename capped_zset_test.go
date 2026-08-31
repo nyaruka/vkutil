@@ -63,3 +63,20 @@ func TestCappedZSet(t *testing.T) {
 
 	assertMembers(zset, []string{"G", "E", "D"}, []float64{3.5, 4, 4.5})
 }
+
+func TestCappedZSetSubSecondExpire(t *testing.T) {
+	ctx := context.Background()
+	vp := assertvk.TestDB()
+	vc := vp.Get()
+	defer vc.Close()
+
+	defer assertvk.FlushDB()
+
+	// an expiry of under a second must still expire the set rather than delete it immediately
+	zset := vkutil.NewCappedZSet("foo", 3, time.Millisecond*500)
+	assert.NoError(t, zset.Add(ctx, vc, "A", 1))
+
+	card, err := zset.Card(ctx, vc)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, card)
+}

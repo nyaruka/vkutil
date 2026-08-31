@@ -142,3 +142,23 @@ func TestIntervalHash(t *testing.T) {
 	assertGet(hash3, "B", "2")
 	assertGet(hash3, "C", "")
 }
+
+func TestIntervalHashSubSecondInterval(t *testing.T) {
+	ctx := context.Background()
+	vp := assertvk.TestDB()
+	vc := vp.Get()
+	defer vc.Close()
+
+	defer assertvk.FlushDB()
+	defer vkutil.SetNow(time.Now)
+
+	vkutil.SetNow(func() time.Time { return time.Date(2021, 11, 18, 12, 7, 3, 0, time.UTC) })
+
+	// an interval of under a second must still expire the keys rather than delete them immediately
+	hash := vkutil.NewIntervalHash("foos", time.Millisecond*500, 2)
+	require.NoError(t, hash.Set(ctx, vc, "A", "1"))
+
+	value, err := hash.Get(ctx, vc, "A")
+	assert.NoError(t, err)
+	assert.Equal(t, "1", value)
+}

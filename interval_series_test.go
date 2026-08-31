@@ -102,3 +102,23 @@ func TestIntervalSeries(t *testing.T) {
 	assertTotal(series1, "B", 3)
 	assertTotal(series1, "C", 0)
 }
+
+func TestIntervalSeriesSubSecondInterval(t *testing.T) {
+	ctx := context.Background()
+	vp := assertvk.TestDB()
+	vc := vp.Get()
+	defer vc.Close()
+
+	defer assertvk.FlushDB()
+	defer vkutil.SetNow(time.Now)
+
+	vkutil.SetNow(func() time.Time { return time.Date(2021, 11, 18, 12, 7, 3, 0, time.UTC) })
+
+	// an interval of under a second must still expire the keys rather than delete them immediately
+	series := vkutil.NewIntervalSeries("foos", time.Millisecond*500, 2)
+	assert.NoError(t, series.Record(ctx, vc, "A", 5))
+
+	total, err := series.Total(ctx, vc, "A")
+	assert.NoError(t, err)
+	assert.Equal(t, int64(5), total)
+}

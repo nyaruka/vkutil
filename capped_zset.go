@@ -26,7 +26,7 @@ var czsetAddScript = valkey.NewScript(1, czsetAdd)
 
 // Add adds an element to the set, if its score puts in the top `cap` members
 func (z *CappedZSet) Add(ctx context.Context, vc valkey.Conn, member string, score float64) error {
-	_, err := czsetAddScript.DoContext(ctx, vc, z.key, score, member, z.cap, int(z.expire/time.Second))
+	_, err := czsetAddScript.DoContext(ctx, vc, z.key, score, member, z.cap, z.expire.Milliseconds())
 	return err
 }
 
