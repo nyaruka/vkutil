@@ -143,7 +143,7 @@ func TestIntervalHash(t *testing.T) {
 	assertGet(hash3, "C", "")
 }
 
-func TestIntervalHashSubSecondInterval(t *testing.T) {
+func TestIntervalHashExpiry(t *testing.T) {
 	ctx := context.Background()
 	vp := assertvk.TestDB()
 	vc := vp.Get()

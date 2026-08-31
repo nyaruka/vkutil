@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	valkey "github.com/gomodule/redigo/redis"
+
 	"github.com/nyaruka/vkutil"
 	"github.com/nyaruka/vkutil/assertvk"
 	"github.com/stretchr/testify/assert"
@@ -64,7 +66,7 @@ func TestCappedZSet(t *testing.T) {
 	assertMembers(zset, []string{"G", "E", "D"}, []float64{3.5, 4, 4.5})
 }
 
-func TestCappedZSetSubSecondExpire(t *testing.T) {
+func TestCappedZSetExpiry(t *testing.T) {
 	ctx := context.Background()
 	vp := assertvk.TestDB()
 	vc := vp.Get()
@@ -79,4 +81,16 @@ func TestCappedZSetSubSecondExpire(t *testing.T) {
 	card, err := zset.Card(ctx, vc)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, card)
+
+	// whilst an expiry of zero means the set never expires
+	zset2 := vkutil.NewCappedZSet("bar", 3, 0)
+	assert.NoError(t, zset2.Add(ctx, vc, "A", 1))
+
+	card, err = zset2.Card(ctx, vc)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, card)
+
+	ttl, err := valkey.Int(valkey.DoContext(vc, ctx, "TTL", "bar"))
+	assert.NoError(t, err)
+	assert.Equal(t, -1, ttl, "expected no expiry to be set")
 }

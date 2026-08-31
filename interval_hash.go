@@ -62,7 +62,9 @@ func (h *IntervalHash) Set(ctx context.Context, vc valkey.Conn, field, value str
 
 	vc.Send("MULTI")
 	vc.Send("HSET", key, field, value)
-	vc.Send("PEXPIRE", key, intervalExpire(h.interval, h.size))
+	if expire := intervalExpire(h.interval, h.size); expire > 0 {
+		vc.Send("PEXPIRE", key, expire)
+	}
 	_, err := valkey.DoContext(vc, ctx, "EXEC")
 	return err
 }

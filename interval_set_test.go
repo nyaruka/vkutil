@@ -134,7 +134,7 @@ func TestIntervalSet(t *testing.T) {
 	assertNotIsMember(set3, "C")
 }
 
-func TestIntervalSetSubSecondInterval(t *testing.T) {
+func TestIntervalSetExpiry(t *testing.T) {
 	ctx := context.Background()
 	vp := assertvk.TestDB()
 	vc := vp.Get()

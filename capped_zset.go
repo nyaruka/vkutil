@@ -15,7 +15,7 @@ type CappedZSet struct {
 	expire time.Duration
 }
 
-// NewCappedZSet creates a new capped sorted set
+// NewCappedZSet creates a new capped sorted set. An expire of zero means the set never expires.
 func NewCappedZSet(key string, cap int, expire time.Duration) *CappedZSet {
 	return &CappedZSet{key: key, cap: cap, expire: expire}
 }

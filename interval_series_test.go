@@ -103,7 +103,7 @@ func TestIntervalSeries(t *testing.T) {
 	assertTotal(series1, "C", 0)
 }
 
-func TestIntervalSeriesSubSecondInterval(t *testing.T) {
+func TestIntervalSeriesExpiry(t *testing.T) {
 	ctx := context.Background()
 	vp := assertvk.TestDB()
 	vc := vp.Get()

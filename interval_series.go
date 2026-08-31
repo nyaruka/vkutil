@@ -26,7 +26,9 @@ func (s *IntervalSeries) Record(ctx context.Context, vc valkey.Conn, field strin
 
 	vc.Send("MULTI")
 	vc.Send("HINCRBY", currKey, field, value)
-	vc.Send("PEXPIRE", currKey, intervalExpire(s.interval, s.size))
+	if expire := intervalExpire(s.interval, s.size); expire > 0 {
+		vc.Send("PEXPIRE", currKey, expire)
+	}
 	_, err := valkey.DoContext(vc, ctx, "EXEC")
 	return err
 }

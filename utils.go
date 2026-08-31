@@ -73,7 +73,8 @@ func RandomBase64(n int) string {
 
 // intervalExpire returns how long an interval key should live for, in milliseconds. Expirations are
 // expressed in milliseconds rather than seconds because a sub-second duration truncated to zero
-// seconds would cause the key to be deleted rather than expired.
+// seconds would cause the key to be deleted rather than expired. Callers must skip setting an expiry
+// altogether when this is zero, rather than passing it to PEXPIRE which would delete the key.
 func intervalExpire(interval time.Duration, size int) int64 {
 	return (interval * time.Duration(size)).Milliseconds()
 }

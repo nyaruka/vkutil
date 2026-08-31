@@ -37,7 +37,9 @@ func (s *IntervalSet) Add(ctx context.Context, vc valkey.Conn, member string) er
 
 	vc.Send("MULTI")
 	vc.Send("SADD", key, member)
-	vc.Send("PEXPIRE", key, intervalExpire(s.interval, s.size))
+	if expire := intervalExpire(s.interval, s.size); expire > 0 {
+		vc.Send("PEXPIRE", key, expire)
+	}
 	_, err := valkey.DoContext(vc, ctx, "EXEC")
 	return err
 }
