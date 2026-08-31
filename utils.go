@@ -1,6 +1,7 @@
 package vkutil
 
 import (
+	"context"
 	"fmt"
 	"math/rand/v2"
 	"strconv"
@@ -19,16 +20,26 @@ func StringsWithScores(reply any, err error) ([]string, []float64, error) {
 		return nil, nil, err
 	}
 
+	if len(pairs)%2 != 0 {
+		return nil, nil, fmt.Errorf("expected an even number of values in reply, got %d", len(pairs))
+	}
+
 	strings := make([]string, len(pairs)/2)
 	scores := make([]float64, len(pairs)/2)
 
-	for i := 0; i < len(pairs)/2; i++ {
-		rawString := pairs[2*i].([]byte)
-		rawScore := pairs[2*i+1].([]byte)
+	for i := range strings {
+		rawString, ok := pairs[2*i].([]byte)
+		if !ok {
+			return nil, nil, fmt.Errorf("expected string at index %d in reply, got %T", 2*i, pairs[2*i])
+		}
+		rawScore, ok := pairs[2*i+1].([]byte)
+		if !ok {
+			return nil, nil, fmt.Errorf("expected string at index %d in reply, got %T", 2*i+1, pairs[2*i+1])
+		}
 
 		score, err := strconv.ParseFloat(string(rawScore), 64)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("invalid score at index %d in reply: %w", 2*i+1, err)
 		}
 
 		strings[i] = string(rawString)
@@ -36,6 +47,25 @@ func StringsWithScores(reply any, err error) ([]string, []float64, error) {
 	}
 
 	return strings, scores, nil
+}
+
+// execTx executes the commands queued on the given connection as a transaction, returning the first
+// error it finds. A command which fails during EXEC doesn't make EXEC itself fail - its error comes
+// back as an element of EXEC's reply - so without checking those, a write which didn't happen is
+// indistinguishable from one which did.
+func execTx(ctx context.Context, vc valkey.Conn) error {
+	replies, err := valkey.Values(valkey.DoContext(vc, ctx, "EXEC"))
+	if err != nil {
+		return err
+	}
+
+	for _, reply := range replies {
+		if err, ok := reply.(valkey.Error); ok {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func intervalTimestamp(t time.Time, interval time.Duration) string {

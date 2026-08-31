@@ -65,8 +65,7 @@ func (h *IntervalHash) Set(ctx context.Context, vc valkey.Conn, field, value str
 	vc.Send("MULTI")
 	vc.Send("HSET", key, field, value)
 	vc.Send("PEXPIRE", key, intervalExpire(h.interval, h.size))
-	_, err := valkey.DoContext(vc, ctx, "EXEC")
-	return err
+	return execTx(ctx, vc)
 }
 
 // Del removes the given fields
@@ -75,8 +74,7 @@ func (h *IntervalHash) Del(ctx context.Context, vc valkey.Conn, fields ...string
 	for _, k := range h.keys() {
 		vc.Send("HDEL", valkey.Args{}.Add(k).AddFlat(fields)...)
 	}
-	_, err := valkey.DoContext(vc, ctx, "EXEC")
-	return err
+	return execTx(ctx, vc)
 }
 
 // Clear removes all fields
@@ -85,8 +83,7 @@ func (h *IntervalHash) Clear(ctx context.Context, vc valkey.Conn) error {
 	for _, k := range h.keys() {
 		vc.Send("DEL", k)
 	}
-	_, err := valkey.DoContext(vc, ctx, "EXEC")
-	return err
+	return execTx(ctx, vc)
 }
 
 func (h *IntervalHash) keys() []string {

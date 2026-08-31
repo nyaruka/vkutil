@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	valkey "github.com/gomodule/redigo/redis"
 	"github.com/nyaruka/vkutil"
 	"github.com/nyaruka/vkutil/assertvk"
 	"github.com/stretchr/testify/assert"
@@ -209,4 +210,29 @@ func TestIntervalHashMGetAcrossIntervals(t *testing.T) {
 	actual, err = hash.MGet(ctx, vc, "C", "A", "B")
 	assert.NoError(t, err)
 	assert.Equal(t, []string{"3", "1", "2"}, actual)
+}
+
+func TestIntervalHashTransactionErrors(t *testing.T) {
+	ctx := context.Background()
+	vp := assertvk.TestDB()
+	vc := vp.Get()
+	defer vc.Close()
+
+	defer assertvk.FlushDB()
+	defer vkutil.SetNow(time.Now)
+
+	vkutil.SetNow(func() time.Time { return time.Date(2021, 11, 18, 12, 7, 3, 0, time.UTC) })
+
+	// occupy the current interval's key with a string, so hash commands against it fail
+	_, err := valkey.DoContext(vc, ctx, "SET", "{foos}:2021-11-18", "not-a-hash")
+	require.NoError(t, err)
+
+	hash := vkutil.NewIntervalHash("foos", time.Hour*24, 2)
+
+	// a command which fails inside the transaction must be reported rather than swallowed
+	assert.Error(t, hash.Set(ctx, vc, "A", "1"))
+	assert.Error(t, hash.Del(ctx, vc, "A"))
+
+	// whereas Clear uses DEL, which is happy with any type
+	assert.NoError(t, hash.Clear(ctx, vc))
 }

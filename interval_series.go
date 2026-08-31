@@ -29,8 +29,7 @@ func (s *IntervalSeries) Record(ctx context.Context, vc valkey.Conn, field strin
 	vc.Send("MULTI")
 	vc.Send("HINCRBY", currKey, field, value)
 	vc.Send("PEXPIRE", currKey, intervalExpire(s.interval, s.size))
-	_, err := valkey.DoContext(vc, ctx, "EXEC")
-	return err
+	return execTx(ctx, vc)
 }
 
 //go:embed lua/iseries_get.lua

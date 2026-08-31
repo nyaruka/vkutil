@@ -40,8 +40,7 @@ func (s *IntervalSet) Add(ctx context.Context, vc valkey.Conn, member string) er
 	vc.Send("MULTI")
 	vc.Send("SADD", key, member)
 	vc.Send("PEXPIRE", key, intervalExpire(s.interval, s.size))
-	_, err := valkey.DoContext(vc, ctx, "EXEC")
-	return err
+	return execTx(ctx, vc)
 }
 
 // Rem removes the given values
@@ -50,8 +49,7 @@ func (s *IntervalSet) Rem(ctx context.Context, vc valkey.Conn, members ...string
 	for _, k := range s.keys() {
 		vc.Send("SREM", valkey.Args{}.Add(k).AddFlat(members)...)
 	}
-	_, err := valkey.DoContext(vc, ctx, "EXEC")
-	return err
+	return execTx(ctx, vc)
 }
 
 // Clear removes all values
@@ -60,8 +58,7 @@ func (s *IntervalSet) Clear(ctx context.Context, vc valkey.Conn) error {
 	for _, k := range s.keys() {
 		vc.Send("DEL", k)
 	}
-	_, err := valkey.DoContext(vc, ctx, "EXEC")
-	return err
+	return execTx(ctx, vc)
 }
 
 func (s *IntervalSet) keys() []string {

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	valkey "github.com/gomodule/redigo/redis"
 	"github.com/nyaruka/vkutil"
 	"github.com/nyaruka/vkutil/assertvk"
 	"github.com/stretchr/testify/assert"
@@ -168,4 +169,29 @@ func TestNewIntervalSetValidation(t *testing.T) {
 	assert.PanicsWithValue(t, "size must be greater than zero", func() {
 		vkutil.NewIntervalSet("foos", time.Minute, -1)
 	})
+}
+
+func TestIntervalSetTransactionErrors(t *testing.T) {
+	ctx := context.Background()
+	vp := assertvk.TestDB()
+	vc := vp.Get()
+	defer vc.Close()
+
+	defer assertvk.FlushDB()
+	defer vkutil.SetNow(time.Now)
+
+	vkutil.SetNow(func() time.Time { return time.Date(2021, 11, 18, 12, 7, 3, 0, time.UTC) })
+
+	// occupy the current interval's key with a string, so set commands against it fail
+	_, err := valkey.DoContext(vc, ctx, "SET", "{foos}:2021-11-18", "not-a-set")
+	require.NoError(t, err)
+
+	set := vkutil.NewIntervalSet("foos", time.Hour*24, 2)
+
+	// a command which fails inside the transaction must be reported rather than swallowed
+	assert.Error(t, set.Add(ctx, vc, "A"))
+	assert.Error(t, set.Rem(ctx, vc, "A"))
+
+	// whereas Clear uses DEL, which is happy with any type
+	assert.NoError(t, set.Clear(ctx, vc))
 }
