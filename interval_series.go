@@ -17,6 +17,8 @@ type IntervalSeries struct {
 
 // NewIntervalSeries creates a new empty series
 func NewIntervalSeries(keyBase string, interval time.Duration, size int) *IntervalSeries {
+	checkIntervalParams(interval, size)
+
 	return &IntervalSeries{keyBase: keyBase, interval: interval, size: size}
 }
 
@@ -26,9 +28,7 @@ func (s *IntervalSeries) Record(ctx context.Context, vc valkey.Conn, field strin
 
 	vc.Send("MULTI")
 	vc.Send("HINCRBY", currKey, field, value)
-	if expire := intervalExpire(s.interval, s.size); expire > 0 {
-		vc.Send("PEXPIRE", currKey, expire)
-	}
+	vc.Send("PEXPIRE", currKey, intervalExpire(s.interval, s.size))
 	_, err := valkey.DoContext(vc, ctx, "EXEC")
 	return err
 }

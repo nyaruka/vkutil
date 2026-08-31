@@ -82,15 +82,23 @@ func TestCappedZSetExpiry(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 1, card)
 
-	// whilst an expiry of zero means the set never expires
-	zset2 := vkutil.NewCappedZSet("bar", 3, 0)
-	assert.NoError(t, zset2.Add(ctx, vc, "A", 1))
-
-	card, err = zset2.Card(ctx, vc)
+	ttl, err := valkey.Int(valkey.DoContext(vc, ctx, "PTTL", "foo"))
 	assert.NoError(t, err)
-	assert.Equal(t, 1, card)
+	assert.Greater(t, ttl, 0, "expected an expiry to be set")
+}
 
-	ttl, err := valkey.Int(valkey.DoContext(vc, ctx, "TTL", "bar"))
-	assert.NoError(t, err)
-	assert.Equal(t, -1, ttl, "expected no expiry to be set")
+func TestNewCappedZSetValidation(t *testing.T) {
+	// a cap or expire which can't be honoured is a programming error, not a runtime one
+	assert.PanicsWithValue(t, "cap must be greater than zero", func() {
+		vkutil.NewCappedZSet("foo", 0, time.Minute)
+	})
+	assert.PanicsWithValue(t, "cap must be greater than zero", func() {
+		vkutil.NewCappedZSet("foo", -1, time.Minute)
+	})
+	assert.PanicsWithValue(t, "expire must be greater than zero", func() {
+		vkutil.NewCappedZSet("foo", 3, 0)
+	})
+	assert.PanicsWithValue(t, "expire must be greater than zero", func() {
+		vkutil.NewCappedZSet("foo", 3, -time.Minute)
+	})
 }

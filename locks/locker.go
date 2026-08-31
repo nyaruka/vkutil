@@ -17,8 +17,17 @@ type Locker struct {
 	expiration time.Duration
 }
 
-// NewLocker creates a new locker using the given key and expiration
+// minExpiration is the shortest lock expiration we can support, because expirations are sent to the
+// server in milliseconds.
+const minExpiration = time.Millisecond
+
+// NewLocker creates a new locker using the given key and expiration. It panics if the expiration is
+// shorter than a millisecond, which would delete the lock rather than expire it.
 func NewLocker(key string, expiration time.Duration) *Locker {
+	if expiration < minExpiration {
+		panic("expiration must be at least 1ms")
+	}
+
 	return &Locker{key: key, expiration: expiration}
 }
 
@@ -26,12 +35,8 @@ func NewLocker(key string, expiration time.Duration) *Locker {
 // It will retry every second until the retry period has ended, returning empty string if not
 // acquired in that time.
 func (l *Locker) Grab(ctx context.Context, vp *valkey.Pool, retry time.Duration) (string, error) {
-	expires, err := expireMillis(l.expiration)
-	if err != nil {
-		return "", err
-	}
-
-	value := vkutil.RandomBase64(10) // generate our lock value
+	value := vkutil.RandomBase64(10)       // generate our lock value
+	expires := l.expiration.Milliseconds() // convert our expiration to milliseconds
 
 	start := time.Now()
 	for {
@@ -75,30 +80,20 @@ func (l *Locker) Release(ctx context.Context, vp *valkey.Pool, value string) err
 var lockerExtend string
 var lockerExtendScript = valkey.NewScript(1, lockerExtend)
 
-// Extend extends our lock expiration by the passed in number of seconds provided the lock value is correct
+// Extend sets our lock expiration to the passed in duration provided the lock value is correct
 func (l *Locker) Extend(ctx context.Context, vp *valkey.Pool, value string, expiration time.Duration) error {
-	expires, err := expireMillis(expiration)
-	if err != nil {
-		return err
+	// unlike the locker's own expiration this is a runtime argument, so it's an error rather than a
+	// panic - but it must still be rejected, since it would delete the lock rather than extend it
+	if expiration < minExpiration {
+		return fmt.Errorf("lock expiration must be at least 1ms, got %s", expiration)
 	}
 
 	vc := vp.Get()
 	defer vc.Close()
 
 	// we use lua here because we only want to set the expiration time if we own it
-	_, err = lockerExtendScript.DoContext(ctx, vc, l.key, value, expires)
+	_, err := lockerExtendScript.DoContext(ctx, vc, l.key, value, expiration.Milliseconds())
 	return err
-}
-
-// expireMillis converts a lock expiration to milliseconds, rejecting durations which don't round to
-// at least one millisecond. Such a duration would otherwise delete the lock rather than expire it,
-// silently handing it to another process whilst the current holder still believes it owns it.
-func expireMillis(d time.Duration) (int64, error) {
-	ms := d.Milliseconds()
-	if ms < 1 {
-		return 0, fmt.Errorf("lock expiration must be at least 1ms, got %s", d)
-	}
-	return ms, nil
 }
 
 // IsLocked returns whether this lock is currently held by any process.

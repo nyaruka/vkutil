@@ -18,6 +18,8 @@ type IntervalHash struct {
 
 // NewIntervalHash creates a new empty interval hash
 func NewIntervalHash(keyBase string, interval time.Duration, size int) *IntervalHash {
+	checkIntervalParams(interval, size)
+
 	return &IntervalHash{keyBase: keyBase, interval: interval, size: size}
 }
 
@@ -62,9 +64,7 @@ func (h *IntervalHash) Set(ctx context.Context, vc valkey.Conn, field, value str
 
 	vc.Send("MULTI")
 	vc.Send("HSET", key, field, value)
-	if expire := intervalExpire(h.interval, h.size); expire > 0 {
-		vc.Send("PEXPIRE", key, expire)
-	}
+	vc.Send("PEXPIRE", key, intervalExpire(h.interval, h.size))
 	_, err := valkey.DoContext(vc, ctx, "EXEC")
 	return err
 }

@@ -153,3 +153,19 @@ func TestIntervalSetExpiry(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, isMember)
 }
+
+func TestNewIntervalSetValidation(t *testing.T) {
+	// an interval or size which can't be honoured is a programming error, not a runtime one
+	assert.PanicsWithValue(t, "interval must be greater than zero", func() {
+		vkutil.NewIntervalSet("foos", 0, 2)
+	})
+	assert.PanicsWithValue(t, "interval must be greater than zero", func() {
+		vkutil.NewIntervalSet("foos", -time.Minute, 2)
+	})
+	assert.PanicsWithValue(t, "size must be greater than zero", func() {
+		vkutil.NewIntervalSet("foos", time.Minute, 0)
+	})
+	assert.PanicsWithValue(t, "size must be greater than zero", func() {
+		vkutil.NewIntervalSet("foos", time.Minute, -1)
+	})
+}

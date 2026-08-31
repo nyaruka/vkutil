@@ -121,7 +121,17 @@ func TestLockerSubSecondExpiration(t *testing.T) {
 
 	assertvk.NotExists(t, vc, "test2")
 
-	// a locker whose expiration rounds to nothing errors rather than misbehaving
-	_, err = locks.NewLocker("test3", time.Microsecond).Grab(ctx, vp, 0)
-	assert.EqualError(t, err, "lock expiration must be at least 1ms, got 1µs")
+}
+
+func TestNewLockerValidation(t *testing.T) {
+	// an expiration which can't be honoured is a programming error, not a runtime one
+	assert.PanicsWithValue(t, "expiration must be at least 1ms", func() {
+		locks.NewLocker("test", time.Microsecond)
+	})
+	assert.PanicsWithValue(t, "expiration must be at least 1ms", func() {
+		locks.NewLocker("test", 0)
+	})
+	assert.PanicsWithValue(t, "expiration must be at least 1ms", func() {
+		locks.NewLocker("test", -time.Minute)
+	})
 }
