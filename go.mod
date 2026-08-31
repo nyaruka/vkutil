@@ -1,6 +1,6 @@
 module github.com/nyaruka/vkutil
 
-go 1.24
+go 1.25
 
 require (
 	github.com/gomodule/redigo v1.9.2

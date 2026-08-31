@@ -5,7 +5,7 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     container:
-      image: golang:1.24
+      image: golang:${{ matrix.go-version }}-trixie
 
     services:
       valkey7:
@@ -19,6 +19,7 @@ jobs:
 
     strategy:
       matrix:
+        go-version: ["1.25", "1.26", "1.27"]
         valkey-host: [valkey7, valkey8]
 
     steps:
