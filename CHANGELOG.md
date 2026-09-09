@@ -1,3 +1,7 @@
+v0.24.0 (2026-09-09)
+-------------------------
+ * Have each test binary claim its own valkey database so concurrent test runs can't interfere with each other
+
 v0.23.0 (2026-08-31)
 -------------------------
  * Add TLS support via valkeys:// and rediss:// URL schemes
