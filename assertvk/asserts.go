@@ -2,6 +2,7 @@ package assertvk
 
 import (
 	"context"
+	"slices"
 	"strconv"
 	"testing"
 
@@ -10,10 +11,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Keys asserts that only the given keys exist
+// Keys asserts that only the given keys exist (this binary's database claim doesn't count)
 func Keys(t *testing.T, vc valkey.Conn, pattern string, expected []string, msgAndArgs ...any) bool {
 	actual, err := valkey.Strings(valkey.DoContext(vc, context.Background(), "KEYS", pattern))
 	assert.NoError(t, err)
+
+	actual = slices.DeleteFunc(actual, func(k string) bool { return k == claimKey })
 
 	return assert.ElementsMatch(t, expected, actual, msgAndArgs...)
 }
