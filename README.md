@@ -1,4 +1,7 @@
-# 🧰 vkutil [![Build Status](https://github.com/nyaruka/vkutil/workflows/CI/badge.svg)](https://github.com/nyaruka/vkutil/actions?query=workflow%3ACI)
+![vkutil](.github/banner.svg)
+
+[![Build Status](https://github.com/nyaruka/vkutil/workflows/CI/badge.svg)](https://github.com/nyaruka/vkutil/actions?query=workflow%3ACI)
+
 A go library of [Valkey](https://valkey.io) utilities built on the [redigo](github.com/gomodule/redigo) client library.
 
 > [!IMPORTANT]
