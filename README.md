@@ -2,10 +2,10 @@
 
 [![Build Status](https://github.com/nyaruka/vkutil/workflows/CI/badge.svg)](https://github.com/nyaruka/vkutil/actions?query=workflow%3ACI)
 
-A go library of [Valkey](https://valkey.io) utilities built on the [redigo](github.com/gomodule/redigo) client library.
+A go library of [Valkey](https://valkey.io) utilities built on the [redigo](https://github.com/gomodule/redigo) client library.
 
 > [!IMPORTANT]
-> Because this library is built on [redigo](github.com/gomodule/redigo) it doesn't support cluster mode. However care 
+> Because this library is built on [redigo](https://github.com/gomodule/redigo) it doesn't support cluster mode. However care 
 > has been taken to ensure this is possible in future by 1) not dynamically constructing keys in LUA scripts and 
 > 2) using [hashtags](https://valkey.io/topics/cluster-spec/) to ensure that keys that are accessed together would hash 
 > to the same hash slot.
