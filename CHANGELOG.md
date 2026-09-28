@@ -1,3 +1,8 @@
+v0.26.0 (2026-09-28)
+-------------------------
+ * Add assertvk.Release to release a test binary's database claim when its tests finish
+ * Add assertvk.ClaimDB to claim a test database per test, giving both a pool and a URL, and flush and release it when the test completes
+
 v0.25.0 (2026-09-28)
 -------------------------
  * Allow test database claims to be coordinated through a dedicated database
