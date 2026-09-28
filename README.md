@@ -148,8 +148,10 @@ cset.Members(ctx, vc)      // ["C", "D", "E"] / [3, 4, 5]
 
 The `assertvk` package contains several asserts useful for testing the state of a database.
 
+Each test claims its own database, which is flushed and released when the test completes:
+
 ```go
-vp := assertvk.TestDB()
+vp := assertvk.TestDB(t) // or assertvk.TestDSN(t) for code that takes a URL
 vc := vp.Get()
 defer vc.Close()
 
@@ -159,10 +161,4 @@ assertvk.NotExists(t, vc, "bar")
 assertvk.Get(t, vc, "foo", "123")
 assertvk.SCard(t, vc, "foo_set", 2)
 assertvk.SMembers(t, vc, "foo_set", []string{"123", "234"})
-```
-
-A test can claim its own database, which is flushed and released when the test completes:
-
-```go
-dsn := assertvk.Claim(t)
 ```

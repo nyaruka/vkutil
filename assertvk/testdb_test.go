@@ -193,7 +193,7 @@ func TestClaimFromTop(t *testing.T) {
 	}
 }
 
-func TestClaim(t *testing.T) {
+func TestTestDB(t *testing.T) {
 	ctx := context.Background()
 
 	dbNum := func(dsn string) int {
@@ -201,12 +201,22 @@ func TestClaim(t *testing.T) {
 		require.NoError(t, err)
 		return n
 	}
+	dbOf := func(vp *valkey.Pool) int {
+		vc := vp.Get()
+		defer vc.Close()
+		info, err := valkey.String(valkey.DoContext(vc, ctx, "CLIENT", "INFO"))
+		require.NoError(t, err)
+		_, rest, _ := strings.Cut(info, " db=")
+		n, err := strconv.Atoi(strings.Fields(rest)[0])
+		require.NoError(t, err)
+		return n
+	}
 
 	var db1, db2 int
 
 	t.Run("claiming", func(t *testing.T) {
-		db1 = dbNum(Claim(t))
-		db2 = dbNum(Claim(t))
+		db1 = dbOf(TestDB(t))
+		db2 = dbNum(TestDSN(t))
 
 		// each claim is given its own database
 		assert.NotEqual(t, db1, db2)

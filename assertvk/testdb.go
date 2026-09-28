@@ -14,11 +14,11 @@ import (
 	valkey "github.com/gomodule/redigo/redis"
 )
 
-// Each test (see Claim) or test binary (see TestDB) claims its own logical database so that concurrent test runs
-// - other tests, other packages, other worktrees, other repos, other languages - sharing a valkey instance can't
-// interfere with each other. A test's claim is released when the test completes, and any claim expires unless its
-// owner keeps renewing it, so one whose owner died evaporates shortly after. Whatever a previous owner left behind
-// is flushed on the next claim.
+// Each test claims its own logical database (see TestDB) so that concurrent tests - in this binary, other packages,
+// other worktrees, other repos, other languages - sharing a valkey instance can't interfere with each other. A
+// claim is flushed and released when its test completes, and it also expires unless its owner keeps renewing it,
+// so one whose owner died evaporates shortly after. Whatever a previous owner left behind is flushed on the next
+// claim.
 //
 // By default each claim is a key in the claimed database itself, with databases tried from the top of the
 // keyspace down - fine for a throwaway instance, but a test that flushes its database also drops its claim.
@@ -149,18 +149,9 @@ func hold() (*heldClaim, error) {
 	return h, nil
 }
 
-// this binary's claimed database - claimed on first use and held until the binary exits
-var claimedDB = sync.OnceValues(func() (int, error) {
-	h, err := hold()
-	if err != nil {
-		return 0, err
-	}
-	return h.db, nil
-})
-
-// Claim claims a database for the calling test, waiting for one to be free, and returns its DSN. It starts empty
-// and is flushed and released when the test completes.
-func Claim(t testing.TB) string {
+// claimFor claims a database for the given test, waiting for one to be free, and flushes and releases it when the
+// test completes
+func claimFor(t testing.TB) int {
 	t.Helper()
 
 	h, err := hold()
@@ -173,7 +164,7 @@ func Claim(t testing.TB) string {
 		}
 	})
 
-	return fmt.Sprintf("valkey://%s/%d", getHostAddress(), h.db)
+	return h.db
 }
 
 // claim finds and claims an unclaimed database, clearing anything a previous owner left behind, and returns
@@ -369,52 +360,35 @@ func clear(conn valkey.Conn) error {
 	return nil
 }
 
-// TestDB returns a valkey pool to this test binary's claimed database
-func TestDB() *valkey.Pool {
-	return &valkey.Pool{
+// TestDB claims a database for the given test, waiting for one to be free, and returns a pool to it. The database
+// starts empty and is flushed and released when the test completes. Each call claims a separate database.
+func TestDB(t testing.TB) *valkey.Pool {
+	t.Helper()
+
+	db := claimFor(t)
+	vp := &valkey.Pool{
 		Dial: func() (valkey.Conn, error) {
-			db, err := claimedDB()
-			if err != nil {
-				return nil, err
-			}
 			conn, err := valkey.Dial("tcp", getHostAddress())
 			if err != nil {
 				return nil, err
 			}
-			_, err = valkey.DoContext(conn, context.Background(), "SELECT", db)
-			return conn, err
+			if _, err := valkey.DoContext(conn, context.Background(), "SELECT", db); err != nil {
+				conn.Close()
+				return nil, err
+			}
+			return conn, nil
 		},
 	}
+	t.Cleanup(func() { vp.Close() }) // before the database is released
+
+	return vp
 }
 
-// TestDSN returns the DSN of this test binary's claimed database, for code that takes a valkey URL
-func TestDSN() string {
-	db, err := claimedDB()
-	if err != nil {
-		panic(fmt.Sprintf("error claiming test database: %s", err.Error()))
-	}
-	return fmt.Sprintf("valkey://%s/%d", getHostAddress(), db)
-}
+// TestDSN is TestDB for code that takes a valkey URL
+func TestDSN(t testing.TB) string {
+	t.Helper()
 
-// FlushDB flushes the test database (preserving this binary's claim on it)
-func FlushDB() {
-	db, err := claimedDB()
-	if err != nil {
-		panic(fmt.Sprintf("error claiming test database: %s", err.Error()))
-	}
-
-	conn, err := valkey.Dial("tcp", getHostAddress())
-	if err != nil {
-		panic(fmt.Sprintf("error connecting to valkey db: %s", err.Error()))
-	}
-	defer conn.Close()
-
-	if _, err := valkey.DoContext(conn, context.Background(), "SELECT", db); err != nil {
-		panic(fmt.Sprintf("error selecting valkey db: %s", err.Error()))
-	}
-	if err := clear(conn); err != nil {
-		panic(fmt.Sprintf("error flushing valkey db: %s", err.Error()))
-	}
+	return fmt.Sprintf("valkey://%s/%d", getHostAddress(), claimFor(t))
 }
 
 func getHostAddress() string {
