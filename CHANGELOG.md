@@ -1,3 +1,7 @@
+v0.25.0 (2026-09-28)
+-------------------------
+ * Allow test database claims to be coordinated through a dedicated database
+
 v0.24.0 (2026-09-09)
 -------------------------
  * Have each test binary claim its own valkey database so concurrent test runs can't interfere with each other
