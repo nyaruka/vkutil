@@ -17,27 +17,53 @@ import (
 // claim expires unless its owner keeps renewing it, so it evaporates shortly after the run that owns it ends,
 // and whatever a dead run left behind is flushed on the next claim.
 //
-// On an instance with more than 17 databases (e.g. --databases 64), database 16 coordinates claims on the pool
-// 17-63 (or as much of it as exists). Its testdbs:claims sorted set holds each claimed database scored by when its
-// claim expires, and its testdbs:owners hash holds each claimed database's owner. Claiming and renewing are
-// the Lua scripts below, which any client sharing the pool must use as-is. Claims live outside the claimed
-// databases, so tests can flush their own database freely.
+// By default each claim is a key in the claimed database itself, with databases tried from the top of the
+// keyspace down - fine for a throwaway instance, but a test that flushes its database also drops its claim.
 //
-// On a default 16 database instance (e.g. a throwaway CI service) there's no coordination database, so each
-// claim is instead a key in the claimed database itself, tried from the top of the keyspace down.
+// Instances shared more widely can instead dedicate a coordination database to claims on a pool of databases
+// (see Coordinate). Its testdbs:claims sorted set holds each claimed database scored by when its claim expires,
+// and its testdbs:owners hash holds each claimed database's owner. Claiming and renewing are the Lua scripts
+// below, which any client sharing the pool must use as-is. Claims live outside the claimed databases, so tests
+// can flush their own database freely.
 
 const (
 	claimTTL = 30 * time.Second
 
-	coordDB   = 16
-	poolFirst = 17
-	poolLast  = 63
 	claimsKey = "testdbs:claims"
 	ownersKey = "testdbs:owners"
 
-	claimKey      = "__assertvk_claim__" // a claim on an uncoordinated instance
+	claimKey      = "__assertvk_claim__" // an uncoordinated claim
 	claimBandSize = 16
 )
+
+// a coordination database and the pool of databases it coordinates claims on
+type coordination struct {
+	db, first, last int
+}
+
+var (
+	coordMu      sync.Mutex
+	coord        *coordination
+	claimStarted bool
+)
+
+// Coordinate makes this binary claim its test database from the pool first..last through the coordination
+// database db, falling back to uncoordinated claims on an instance without that database. Every binary sharing
+// the pool must use the same values, and it must be called before the test database is first used, e.g. from
+// the init of a package every test imports.
+func Coordinate(db, first, last int) {
+	if db < 0 || first < 0 || first > last || (db >= first && db <= last) {
+		panic(fmt.Sprintf("invalid test database coordination: db %d, pool %d-%d", db, first, last))
+	}
+
+	coordMu.Lock()
+	defer coordMu.Unlock()
+
+	if claimStarted {
+		panic("assertvk.Coordinate called after the test database was claimed")
+	}
+	coord = &coordination{db, first, last}
+}
 
 // claims the first database in the pool (ARGV[1]..ARGV[2]) which isn't claimed or whose claim has expired, for
 // owner ARGV[3] with a TTL of ARGV[4] milliseconds - returning the database or -1 if none are free
@@ -76,52 +102,58 @@ var claimedDB = sync.OnceValues(func() (int, error) {
 
 	owner := fmt.Sprintf("%s:%d", hostname, os.Getpid())
 
-	db, coordinated, err := claim(getHostAddress(), owner, time.Now().Add(3*time.Minute))
+	coordMu.Lock()
+	claimStarted = true
+	c := coord
+	coordMu.Unlock()
+
+	db, used, err := claim(getHostAddress(), owner, c, time.Now().Add(3*time.Minute))
 	if err == nil {
-		go keepClaim(db, owner, coordinated)
+		go keepClaim(db, owner, used)
 	}
 	return db, err
 })
 
 // claim finds and claims an unclaimed database, clearing anything a previous owner left behind, and returns
-// whether the claim is coordinated. If every database is claimed it keeps trying until the deadline - claims
+// the coordination used, if any. If every database is claimed it keeps trying until the deadline - claims
 // from dead runs expire.
-func claim(addr, owner string, deadline time.Time) (int, bool, error) {
+func claim(addr, owner string, c *coordination, deadline time.Time) (int, *coordination, error) {
 	ctx := context.Background()
 
 	conn, err := valkey.Dial("tcp", addr)
 	if err != nil {
-		return 0, false, fmt.Errorf("error connecting to valkey: %w", err)
+		return 0, nil, fmt.Errorf("error connecting to valkey: %w", err)
 	}
 	defer conn.Close()
 
 	cfg, err := valkey.Strings(valkey.DoContext(conn, ctx, "CONFIG", "GET", "databases"))
 	if err != nil || len(cfg) != 2 {
-		return 0, false, fmt.Errorf("error reading valkey database count: %w", err)
+		return 0, nil, fmt.Errorf("error reading valkey database count: %w", err)
 	}
 	numDBs, err := strconv.Atoi(cfg[1])
 	if err != nil {
-		return 0, false, fmt.Errorf("error parsing valkey database count: %w", err)
+		return 0, nil, fmt.Errorf("error parsing valkey database count: %w", err)
 	}
 
-	if numDBs > poolFirst {
-		db, err := claimFromPool(conn, owner, min(poolLast, numDBs-1), deadline)
-		return db, true, err
+	if c != nil && numDBs > max(c.db, c.first) {
+		c = &coordination{c.db, c.first, min(c.last, numDBs-1)} // as much of the pool as exists
+		db, err := claimFromPool(conn, owner, c, deadline)
+		return db, c, err
 	}
 	db, err := claimFromTop(conn, owner, numDBs, deadline)
-	return db, false, err
+	return db, nil, err
 }
 
-// claimFromPool claims a database from the pool coordinated by the coordination database
-func claimFromPool(conn valkey.Conn, owner string, last int, deadline time.Time) (int, error) {
+// claimFromPool claims a database from a coordinated pool
+func claimFromPool(conn valkey.Conn, owner string, c *coordination, deadline time.Time) (int, error) {
 	ctx := context.Background()
 
-	if _, err := valkey.DoContext(conn, ctx, "SELECT", coordDB); err != nil {
+	if _, err := valkey.DoContext(conn, ctx, "SELECT", c.db); err != nil {
 		return 0, fmt.Errorf("error selecting coordination database: %w", err)
 	}
 
 	for {
-		db, err := valkey.Int(claimScript.DoContext(ctx, conn, claimsKey, ownersKey, poolFirst, last, owner, claimTTL.Milliseconds()))
+		db, err := valkey.Int(claimScript.DoContext(ctx, conn, claimsKey, ownersKey, c.first, c.last, owner, claimTTL.Milliseconds()))
 		if err != nil {
 			return 0, fmt.Errorf("error claiming database: %w", err)
 		}
@@ -135,7 +167,7 @@ func claimFromPool(conn valkey.Conn, owner string, last int, deadline time.Time)
 			return db, nil
 		}
 		if time.Now().After(deadline) {
-			return 0, fmt.Errorf("timed out waiting for an unclaimed test database (tried %d-%d)", poolFirst, last)
+			return 0, fmt.Errorf("timed out waiting for an unclaimed test database (tried %d-%d)", c.first, c.last)
 		}
 		time.Sleep(250 * time.Millisecond)
 	}
@@ -166,11 +198,11 @@ func claimFromTop(conn valkey.Conn, owner string, numDBs int, deadline time.Time
 }
 
 // keepClaim renews this binary's claim until the binary exits
-func keepClaim(db int, owner string, coordinated bool) {
+func keepClaim(db int, owner string, c *coordination) {
 	for {
 		time.Sleep(claimTTL / 3)
 
-		held, err := renew(getHostAddress(), db, owner, coordinated)
+		held, err := renew(getHostAddress(), db, owner, c)
 		if err == nil && !held {
 			// another binary may now be using our database, so nothing this binary asserts can be trusted
 			panic(fmt.Sprintf("lost claim on test database %d", db))
@@ -179,7 +211,7 @@ func keepClaim(db int, owner string, coordinated bool) {
 }
 
 // renew renews a claim, returning whether the owner still held it
-func renew(addr string, db int, owner string, coordinated bool) (bool, error) {
+func renew(addr string, db int, owner string, c *coordination) (bool, error) {
 	ctx := context.Background()
 
 	conn, err := valkey.Dial("tcp", addr)
@@ -188,13 +220,13 @@ func renew(addr string, db int, owner string, coordinated bool) (bool, error) {
 	}
 	defer conn.Close()
 
-	if !coordinated {
+	if c == nil {
 		valkey.DoContext(conn, ctx, "SELECT", db)
 		_, err := valkey.DoContext(conn, ctx, "EXPIRE", claimKey, int(claimTTL.Seconds()))
 		return true, err
 	}
 
-	if _, err := valkey.DoContext(conn, ctx, "SELECT", coordDB); err != nil {
+	if _, err := valkey.DoContext(conn, ctx, "SELECT", c.db); err != nil {
 		return false, err
 	}
 	held, err := valkey.Int(renewScript.DoContext(ctx, conn, claimsKey, ownersKey, db, owner, claimTTL.Milliseconds()))

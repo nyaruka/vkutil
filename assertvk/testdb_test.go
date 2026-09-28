@@ -11,23 +11,30 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestCoordinate(t *testing.T) {
+	assert.PanicsWithValue(t, "invalid test database coordination: db -1, pool 17-63", func() { Coordinate(-1, 17, 63) })
+	assert.PanicsWithValue(t, "invalid test database coordination: db 16, pool 63-17", func() { Coordinate(16, 63, 17) })
+	assert.PanicsWithValue(t, "invalid test database coordination: db 20, pool 17-63", func() { Coordinate(20, 17, 63) })
+}
+
 func TestClaimFromPool(t *testing.T) {
 	ctx := context.Background()
 	deadline := time.Now().Add(5 * time.Second)
 	numDBs := numDatabases(t)
 
-	if numDBs <= poolFirst {
-		t.Skip("valkey instance has no coordination database")
+	if numDBs <= 17 {
+		t.Skip("valkey instance is too small to coordinate claims")
 	}
+	coord := &coordination{16, 17, min(63, numDBs-1)}
 
 	// claiming leaves the connection on the claimed database, so each claim gets its own
 	claimFromPool := func(owner string) (int, error) {
-		c := sel(t, coordDB)
+		c := sel(t, coord.db)
 		defer c.Close()
-		return claimFromPool(c, owner, min(poolLast, numDBs-1), deadline)
+		return claimFromPool(c, owner, coord, deadline)
 	}
 
-	conn := sel(t, coordDB)
+	conn := sel(t, coord.db)
 	defer conn.Close()
 
 	db1, err := claimFromPool("owner1")
@@ -39,10 +46,10 @@ func TestClaimFromPool(t *testing.T) {
 	assert.NotEqual(t, db1, db2)
 
 	// owners can renew their own claims but not each other's
-	held, err := renew(getHostAddress(), db1, "owner1", true)
+	held, err := renew(getHostAddress(), db1, "owner1", coord)
 	assert.NoError(t, err)
 	assert.True(t, held)
-	held, err = renew(getHostAddress(), db1, "owner2", true)
+	held, err = renew(getHostAddress(), db1, "owner2", coord)
 	assert.NoError(t, err)
 	assert.False(t, held)
 
@@ -66,7 +73,7 @@ func TestClaimFromPool(t *testing.T) {
 	c3.Close()
 
 	// and the previous owner can no longer renew it
-	held, err = renew(getHostAddress(), db2, "owner2", true)
+	held, err = renew(getHostAddress(), db2, "owner2", coord)
 	assert.NoError(t, err)
 	assert.False(t, held)
 
@@ -79,7 +86,7 @@ func TestClaimFromPool(t *testing.T) {
 	_, err = valkey.DoContext(c3, ctx, "FLUSHDB")
 	require.NoError(t, err)
 	c3.Close()
-	held, err = renew(getHostAddress(), db3, "owner3", true)
+	held, err = renew(getHostAddress(), db3, "owner3", coord)
 	assert.NoError(t, err)
 	assert.True(t, held)
 
@@ -158,4 +165,23 @@ func numDatabases(t *testing.T) int {
 	n, err := strconv.Atoi(cfg[1])
 	require.NoError(t, err)
 	return n
+}
+
+func TestClaimFallsBackWithoutCoordinationDB(t *testing.T) {
+	ctx := context.Background()
+	numDBs := numDatabases(t)
+
+	// coordination through a database the instance doesn't have falls back to uncoordinated claims
+	db, used, err := claim(getHostAddress(), "owner1", &coordination{numDBs, numDBs + 1, numDBs + 10}, time.Now().Add(5*time.Second))
+	require.NoError(t, err)
+	assert.Nil(t, used)
+
+	c := sel(t, db)
+	defer c.Close()
+	owner, err := valkey.String(valkey.DoContext(c, ctx, "GET", claimKey))
+	require.NoError(t, err)
+	assert.Equal(t, "owner1", owner)
+
+	_, err = valkey.DoContext(c, ctx, "DEL", claimKey)
+	require.NoError(t, err)
 }
