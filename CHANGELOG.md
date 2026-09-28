@@ -1,3 +1,7 @@
+v0.27.0 (2026-09-28)
+-------------------------
+ * Require test database claims to be coordinated, removing uncoordinated claims
+
 v0.26.0 (2026-09-28)
 -------------------------
  * Add assertvk.Release to release a test binary's database claim when its tests finish
