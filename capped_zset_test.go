@@ -14,7 +14,7 @@ import (
 
 func TestCappedZSet(t *testing.T) {
 	ctx := context.Background()
-	vp := assertvk.TestDB(t)
+	vp := assertvk.ClaimDB(t).Pool()
 	vc := vp.Get()
 	defer vc.Close()
 
@@ -66,7 +66,7 @@ func TestCappedZSet(t *testing.T) {
 
 func TestCappedZSetExpiry(t *testing.T) {
 	ctx := context.Background()
-	vp := assertvk.TestDB(t)
+	vp := assertvk.ClaimDB(t).Pool()
 	vc := vp.Get()
 	defer vc.Close()
 

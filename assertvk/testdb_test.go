@@ -2,8 +2,8 @@ package assertvk
 
 import (
 	"context"
+	"fmt"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -193,37 +193,27 @@ func TestClaimFromTop(t *testing.T) {
 	}
 }
 
-func TestTestDB(t *testing.T) {
+func TestClaimDB(t *testing.T) {
 	ctx := context.Background()
-
-	dbNum := func(dsn string) int {
-		n, err := strconv.Atoi(dsn[strings.LastIndex(dsn, "/")+1:])
-		require.NoError(t, err)
-		return n
-	}
-	dbOf := func(vp *valkey.Pool) int {
-		vc := vp.Get()
-		defer vc.Close()
-		info, err := valkey.String(valkey.DoContext(vc, ctx, "CLIENT", "INFO"))
-		require.NoError(t, err)
-		_, rest, _ := strings.Cut(info, " db=")
-		n, err := strconv.Atoi(strings.Fields(rest)[0])
-		require.NoError(t, err)
-		return n
-	}
 
 	var db1, db2 int
 
 	t.Run("claiming", func(t *testing.T) {
-		db1 = dbOf(TestDB(t))
-		db2 = dbNum(TestDSN(t))
+		d1, d2 := ClaimDB(t), ClaimDB(t)
+		db1, db2 = d1.Num, d2.Num
 
 		// each claim is given its own database
 		assert.NotEqual(t, db1, db2)
+		assert.Equal(t, fmt.Sprintf("valkey://%s/%d", getHostAddress(), db1), d1.URL)
 
-		c := sel(t, db1)
-		defer c.Close()
-		_, err := valkey.DoContext(c, ctx, "SET", "data", "1")
+		// whose pool connects to it
+		vc := d1.Pool().Get()
+		defer vc.Close()
+		info, err := valkey.String(valkey.DoContext(vc, ctx, "CLIENT", "INFO"))
+		require.NoError(t, err)
+		assert.Contains(t, info, fmt.Sprintf(" db=%d ", db1))
+
+		_, err = valkey.DoContext(vc, ctx, "SET", "data", "1")
 		require.NoError(t, err)
 	})
 

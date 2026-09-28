@@ -15,7 +15,7 @@ import (
 
 func TestIntervalHash(t *testing.T) {
 	ctx := context.Background()
-	vp := assertvk.TestDB(t)
+	vp := assertvk.ClaimDB(t).Pool()
 	vc := vp.Get()
 	defer vc.Close()
 
@@ -144,7 +144,7 @@ func TestIntervalHash(t *testing.T) {
 
 func TestIntervalHashExpiry(t *testing.T) {
 	ctx := context.Background()
-	vp := assertvk.TestDB(t)
+	vp := assertvk.ClaimDB(t).Pool()
 	vc := vp.Get()
 	defer vc.Close()
 
@@ -179,7 +179,7 @@ func TestNewIntervalHashValidation(t *testing.T) {
 
 func TestIntervalHashMGetAcrossIntervals(t *testing.T) {
 	ctx := context.Background()
-	vp := assertvk.TestDB(t)
+	vp := assertvk.ClaimDB(t).Pool()
 	vc := vp.Get()
 	defer vc.Close()
 
@@ -210,7 +210,7 @@ func TestIntervalHashMGetAcrossIntervals(t *testing.T) {
 
 func TestIntervalHashTransactionErrors(t *testing.T) {
 	ctx := context.Background()
-	vp := assertvk.TestDB(t)
+	vp := assertvk.ClaimDB(t).Pool()
 	vc := vp.Get()
 	defer vc.Close()
 
