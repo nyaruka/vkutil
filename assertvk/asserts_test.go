@@ -11,7 +11,7 @@ import (
 
 func TestAsserts(t *testing.T) {
 	ctx := context.Background()
-	vp := assertvk.TestDB(t)
+	vp := assertvk.ClaimDB(t).Pool()
 	vc := vp.Get()
 	defer vc.Close()
 

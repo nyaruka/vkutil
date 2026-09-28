@@ -12,7 +12,7 @@ import (
 
 func TestLocker(t *testing.T) {
 	ctx := context.Background()
-	vp := assertvk.TestDB(t)
+	vp := assertvk.ClaimDB(t).Pool()
 	vc := vp.Get()
 	defer vc.Close()
 
@@ -76,7 +76,7 @@ func TestLocker(t *testing.T) {
 
 func TestLockerSubSecondExpiration(t *testing.T) {
 	ctx := context.Background()
-	vp := assertvk.TestDB(t)
+	vp := assertvk.ClaimDB(t).Pool()
 	vc := vp.Get()
 	defer vc.Close()
 

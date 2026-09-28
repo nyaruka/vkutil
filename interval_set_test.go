@@ -14,7 +14,7 @@ import (
 
 func TestIntervalSet(t *testing.T) {
 	ctx := context.Background()
-	vp := assertvk.TestDB(t)
+	vp := assertvk.ClaimDB(t).Pool()
 	vc := vp.Get()
 	defer vc.Close()
 
@@ -135,7 +135,7 @@ func TestIntervalSet(t *testing.T) {
 
 func TestIntervalSetExpiry(t *testing.T) {
 	ctx := context.Background()
-	vp := assertvk.TestDB(t)
+	vp := assertvk.ClaimDB(t).Pool()
 	vc := vp.Get()
 	defer vc.Close()
 
@@ -170,7 +170,7 @@ func TestNewIntervalSetValidation(t *testing.T) {
 
 func TestIntervalSetTransactionErrors(t *testing.T) {
 	ctx := context.Background()
-	vp := assertvk.TestDB(t)
+	vp := assertvk.ClaimDB(t).Pool()
 	vc := vp.Get()
 	defer vc.Close()
 

@@ -151,13 +151,14 @@ one test's flush wipes out another's state. That rules out `t.Parallel()`, and a
 packages' test binaries in parallel. It also rules out running several test suites, from other worktrees or other
 repos, against the same server.
 
-So each test gets its own database from a pool on the valkey server at `$VALKEY_HOST`. Each call to `assertvk.TestDB`
-or `assertvk.TestDSN` claims a database for the calling test, waiting for one if they're all taken. It starts empty and
-is flushed and released when the test completes, so tests don't need to clean up after themselves.
+So each test claims its own database from a pool on the valkey server at `$VALKEY_HOST`, waiting for one if they're all
+taken. It starts empty and is flushed and released when the test completes, so tests don't need to clean up after
+themselves.
 
 ```go
-vp := assertvk.TestDB(t)   // a pool to the test's own database
-dsn := assertvk.TestDSN(t) // or its URL, for code that connects itself - each call claims a separate database
+db := assertvk.ClaimDB(t) // each call claims a separate database
+vp := db.Pool()           // for code that takes a pool
+url := db.URL             // or for code that takes a URL
 ```
 
 By default databases are taken from the top of the server's range, with each claim recorded in the claimed database
@@ -179,7 +180,7 @@ Clients in other languages can share the pool by using the same protocol, docume
 The `assertvk` package contains several asserts useful for testing the state of a database.
 
 ```go
-vc := assertvk.TestDB(t).Get()
+vc := assertvk.ClaimDB(t).Pool().Get()
 defer vc.Close()
 
 assertvk.Keys(t, vc, "*", []string{"foo", "bar"})

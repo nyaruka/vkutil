@@ -14,7 +14,7 @@ import (
 	valkey "github.com/gomodule/redigo/redis"
 )
 
-// Each test claims its own logical database (see TestDB) so that concurrent tests - in this binary, other packages,
+// Each test claims its own logical database (see ClaimDB) so that concurrent tests - in this binary, other packages,
 // other worktrees, other repos, other languages - sharing a valkey instance can't interfere with each other. A
 // claim is flushed and released when its test completes, and it also expires unless its owner keeps renewing it,
 // so one whose owner died evaporates shortly after. Whatever a previous owner left behind is flushed on the next
@@ -147,24 +147,6 @@ func hold() (*heldClaim, error) {
 	h := &heldClaim{db: db, owner: owner, coord: used, stop: make(chan struct{}), stopped: make(chan struct{})}
 	go h.keep()
 	return h, nil
-}
-
-// claimFor claims a database for the given test, waiting for one to be free, and flushes and releases it when the
-// test completes
-func claimFor(t testing.TB) int {
-	t.Helper()
-
-	h, err := hold()
-	if err != nil {
-		t.Fatalf("error claiming test database: %s", err)
-	}
-	t.Cleanup(func() {
-		if err := h.release(); err != nil {
-			t.Logf("error releasing test database %d, leaving its claim to expire: %s", h.db, err)
-		}
-	})
-
-	return h.db
 }
 
 // claim finds and claims an unclaimed database, clearing anything a previous owner left behind, and returns
@@ -360,35 +342,48 @@ func clear(conn valkey.Conn) error {
 	return nil
 }
 
-// TestDB claims a database for the given test, waiting for one to be free, and returns a pool to it. The database
-// starts empty and is flushed and released when the test completes. Each call claims a separate database.
-func TestDB(t testing.TB) *valkey.Pool {
+// ClaimedDB is a database claimed by a test
+type ClaimedDB struct {
+	Num int    // its database number
+	URL string // e.g. for code that takes a valkey URL
+
+	pool *valkey.Pool
+}
+
+// Pool returns a pool of connections to the database
+func (d *ClaimedDB) Pool() *valkey.Pool { return d.pool }
+
+// ClaimDB claims a database for the given test, waiting for one to be free. The database starts empty and is flushed
+// and released when the test completes. Each call claims a separate database.
+func ClaimDB(t testing.TB) *ClaimedDB {
 	t.Helper()
 
-	db := claimFor(t)
-	vp := &valkey.Pool{
+	h, err := hold()
+	if err != nil {
+		t.Fatalf("error claiming test database: %s", err)
+	}
+	t.Cleanup(func() {
+		if err := h.release(); err != nil {
+			t.Logf("error releasing test database %d, leaving its claim to expire: %s", h.db, err)
+		}
+	})
+
+	pool := &valkey.Pool{
 		Dial: func() (valkey.Conn, error) {
 			conn, err := valkey.Dial("tcp", getHostAddress())
 			if err != nil {
 				return nil, err
 			}
-			if _, err := valkey.DoContext(conn, context.Background(), "SELECT", db); err != nil {
+			if _, err := valkey.DoContext(conn, context.Background(), "SELECT", h.db); err != nil {
 				conn.Close()
 				return nil, err
 			}
 			return conn, nil
 		},
 	}
-	t.Cleanup(func() { vp.Close() }) // before the database is released
+	t.Cleanup(func() { pool.Close() }) // before the database is released
 
-	return vp
-}
-
-// TestDSN is TestDB for code that takes a valkey URL
-func TestDSN(t testing.TB) string {
-	t.Helper()
-
-	return fmt.Sprintf("valkey://%s/%d", getHostAddress(), claimFor(t))
+	return &ClaimedDB{Num: h.db, URL: fmt.Sprintf("valkey://%s/%d", getHostAddress(), h.db), pool: pool}
 }
 
 func getHostAddress() string {
