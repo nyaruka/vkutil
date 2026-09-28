@@ -2,22 +2,23 @@ package assertvk
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"slices"
 	"strconv"
 	"sync"
+	"sync/atomic"
+	"testing"
 	"time"
 
 	valkey "github.com/gomodule/redigo/redis"
 )
 
-// Each test binary claims its own logical database so that concurrent test runs - other packages, other
-// worktrees, other repos, other languages - sharing a valkey instance can't interfere with each other. A
-// binary releases its claim when its tests are done (see Release), and a claim also expires unless its owner
-// keeps renewing it, so one whose owner died evaporates shortly after. Whatever a previous owner left behind is
-// flushed on the next claim.
+// Each test (see Claim) or test binary (see TestDB) claims its own logical database so that concurrent test runs
+// - other tests, other packages, other worktrees, other repos, other languages - sharing a valkey instance can't
+// interfere with each other. A test's claim is released when the test completes, and any claim expires unless its
+// owner keeps renewing it, so one whose owner died evaporates shortly after. Whatever a previous owner left behind
+// is flushed on the next claim.
 //
 // By default each claim is a key in the claimed database itself, with databases tried from the top of the
 // keyspace down - fine for a throwaway instance, but a test that flushes its database also drops its claim.
@@ -43,7 +44,7 @@ type coordination struct {
 	db, first, last int
 }
 
-// this binary's claim on its test database
+// a claim on a test database, renewed until released
 type heldClaim struct {
 	db    int
 	owner string
@@ -57,8 +58,7 @@ var (
 	mu           sync.Mutex
 	coord        *coordination
 	claimStarted bool
-	held         *heldClaim
-	released     bool
+	claimSeq     atomic.Int64
 )
 
 // Coordinate makes this binary claim its test database from the pool first..last through the coordination
@@ -128,11 +128,11 @@ end
 return redis.call("DEL", KEYS[1])
 `)
 
-// this binary's claimed database - claimed on first use
-var claimOnce = sync.OnceValues(func() (int, error) {
+// hold claims a database and starts renewing the claim
+func hold() (*heldClaim, error) {
 	hostname, _ := os.Hostname()
 
-	owner := fmt.Sprintf("%s:%d", hostname, os.Getpid())
+	owner := fmt.Sprintf("%s:%d:%d", hostname, os.Getpid(), claimSeq.Add(1)) // a binary can hold several claims
 
 	mu.Lock()
 	claimStarted = true
@@ -141,49 +141,39 @@ var claimOnce = sync.OnceValues(func() (int, error) {
 
 	db, used, err := claim(getHostAddress(), owner, c, time.Now().Add(3*time.Minute))
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	h := &heldClaim{db: db, owner: owner, coord: used, stop: make(chan struct{}), stopped: make(chan struct{})}
 	go h.keep()
-
-	mu.Lock()
-	defer mu.Unlock()
-
-	if released { // Release was called while we were claiming
-		h.release()
-		return 0, errReleased
-	}
-	held = h
-	return db, nil
-})
-
-var errReleased = errors.New("test database has been released")
-
-func claimedDB() (int, error) {
-	mu.Lock()
-	r := released
-	mu.Unlock()
-
-	if r {
-		return 0, errReleased
-	}
-	return claimOnce()
+	return h, nil
 }
 
-// Release releases this binary's claim on its test database, if it has made one, so that other binaries can
-// claim it without waiting for the claim to expire. Call it once all tests have finished, e.g. from TestMain after
-// m.Run, since the test database can't be used after. The database isn't flushed, so a failed run's data can be
-// inspected until the database is next claimed.
-func Release() {
-	mu.Lock()
-	defer mu.Unlock()
-
-	released = true
-	if held != nil {
-		held.release()
-		held = nil
+// this binary's claimed database - claimed on first use and held until the binary exits
+var claimedDB = sync.OnceValues(func() (int, error) {
+	h, err := hold()
+	if err != nil {
+		return 0, err
 	}
+	return h.db, nil
+})
+
+// Claim claims a database for the calling test, waiting for one to be free, and returns its DSN. It starts empty
+// and is flushed and released when the test completes.
+func Claim(t testing.TB) string {
+	t.Helper()
+
+	h, err := hold()
+	if err != nil {
+		t.Fatalf("error claiming test database: %s", err)
+	}
+	t.Cleanup(func() {
+		if err := h.release(); err != nil {
+			t.Logf("error releasing test database %d, leaving its claim to expire: %s", h.db, err)
+		}
+	})
+
+	return fmt.Sprintf("valkey://%s/%d", getHostAddress(), h.db)
 }
 
 // claim finds and claims an unclaimed database, clearing anything a previous owner left behind, and returns
@@ -288,14 +278,26 @@ func (h *heldClaim) keep() {
 	}
 }
 
-// release stops renewing the claim and releases it - failing that it's left to expire
-func (h *heldClaim) release() {
+// release stops renewing the claim, flushes the database and releases the claim
+func (h *heldClaim) release() error {
 	close(h.stop)
 	<-h.stopped // so a renewal can't race the release and find the claim gone
 
-	if _, err := release(getHostAddress(), h.db, h.owner, h.coord); err != nil {
-		fmt.Fprintf(os.Stderr, "error releasing test database %d: %s\n", h.db, err)
+	conn, err := valkey.Dial("tcp", getHostAddress())
+	if err != nil {
+		return fmt.Errorf("error connecting to valkey: %w", err)
 	}
+	defer conn.Close()
+
+	if _, err := valkey.DoContext(conn, context.Background(), "SELECT", h.db); err != nil {
+		return fmt.Errorf("error selecting database: %w", err)
+	}
+	if err := clear(conn); err != nil { // while we still own it
+		return err
+	}
+
+	_, err = release(getHostAddress(), h.db, h.owner, h.coord)
+	return err
 }
 
 // renew renews a claim, returning whether the owner still held it

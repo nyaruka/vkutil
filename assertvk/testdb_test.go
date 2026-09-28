@@ -3,6 +3,7 @@ package assertvk
 import (
 	"context"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -192,42 +193,38 @@ func TestClaimFromTop(t *testing.T) {
 	}
 }
 
-func TestHeldClaimRelease(t *testing.T) {
+func TestClaim(t *testing.T) {
 	ctx := context.Background()
-	numDBs := numDatabases(t)
 
-	conn := sel(t, 0)
-	defer conn.Close()
-
-	db, err := claimFromTop(conn, "owner1", numDBs, time.Now().Add(5*time.Second))
-	require.NoError(t, err)
-
-	h := &heldClaim{db: db, owner: "owner1", stop: make(chan struct{}), stopped: make(chan struct{})}
-	go h.keep()
-
-	c := sel(t, db)
-	defer c.Close()
-	_, err = valkey.DoContext(c, ctx, "SET", "data", "1")
-	require.NoError(t, err)
-
-	// releasing stops renewals and drops the claim, but leaves the data for inspection
-	h.release()
-
-	select {
-	case <-h.stopped:
-	default:
-		assert.Fail(t, "claim still being renewed")
-	}
-	assertExists := func(key string, expected bool) {
-		exists, err := valkey.Bool(valkey.DoContext(c, ctx, "EXISTS", key))
+	dbNum := func(dsn string) int {
+		n, err := strconv.Atoi(dsn[strings.LastIndex(dsn, "/")+1:])
 		require.NoError(t, err)
-		assert.Equal(t, expected, exists, "exists %s", key)
+		return n
 	}
-	assertExists(claimKey, false)
-	assertExists("data", true)
 
-	_, err = valkey.DoContext(c, ctx, "DEL", "data")
-	require.NoError(t, err)
+	var db1, db2 int
+
+	t.Run("claiming", func(t *testing.T) {
+		db1 = dbNum(Claim(t))
+		db2 = dbNum(Claim(t))
+
+		// each claim is given its own database
+		assert.NotEqual(t, db1, db2)
+
+		c := sel(t, db1)
+		defer c.Close()
+		_, err := valkey.DoContext(c, ctx, "SET", "data", "1")
+		require.NoError(t, err)
+	})
+
+	// once the test completes its databases are flushed and released
+	for _, db := range []int{db1, db2} {
+		c := sel(t, db)
+		n, err := valkey.Int(valkey.DoContext(c, ctx, "DBSIZE"))
+		require.NoError(t, err)
+		assert.Equal(t, 0, n, "keys in db %d", db)
+		c.Close()
+	}
 }
 
 // sel returns a new connection to the given database

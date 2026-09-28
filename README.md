@@ -161,13 +161,8 @@ assertvk.SCard(t, vc, "foo_set", 2)
 assertvk.SMembers(t, vc, "foo_set", []string{"123", "234"})
 ```
 
-Each test binary claims its own database. Release it when the binary's tests finish, so that other test binaries
-don't have to wait for the claim to expire:
+A test can claim its own database, which is flushed and released when the test completes:
 
 ```go
-func TestMain(m *testing.M) {
-    code := m.Run()
-    assertvk.Release()
-    os.Exit(code)
-}
+dsn := assertvk.Claim(t)
 ```
