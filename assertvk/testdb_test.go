@@ -3,6 +3,7 @@ package assertvk
 import (
 	"context"
 	"fmt"
+	"os"
 	"strconv"
 	"testing"
 	"time"
@@ -11,6 +12,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestMain(m *testing.M) {
+	Coordinate(16, 17, 63) // CI's valkeys have 64 databases
+
+	os.Exit(m.Run())
+}
 
 func TestCoordinate(t *testing.T) {
 	assert.PanicsWithValue(t, "invalid test database coordination: db -1, pool 17-63", func() { Coordinate(-1, 17, 63) })
@@ -21,12 +28,6 @@ func TestCoordinate(t *testing.T) {
 func TestClaimFromPool(t *testing.T) {
 	ctx := context.Background()
 	deadline := time.Now().Add(5 * time.Second)
-	numDBs := numDatabases(t)
-
-	if numDBs <= 17 {
-		t.Skip("valkey instance is too small to coordinate claims")
-	}
-	coord := &coordination{16, 17, min(63, numDBs-1)}
 
 	// claiming leaves the connection on the claimed database, so each claim gets its own
 	claimFromPool := func(owner string) (int, error) {
@@ -125,74 +126,6 @@ func TestClaimFromPool(t *testing.T) {
 	}
 }
 
-func TestClaimFromTop(t *testing.T) {
-	ctx := context.Background()
-	deadline := time.Now().Add(5 * time.Second)
-	numDBs := numDatabases(t)
-
-	conn := sel(t, 0)
-	defer conn.Close()
-
-	db1, err := claimFromTop(conn, "owner1", numDBs, deadline)
-	require.NoError(t, err)
-	assert.GreaterOrEqual(t, db1, numDBs-claimBandSize)
-
-	// a second claimant is given a different database
-	db2, err := claimFromTop(conn, "owner2", numDBs, deadline)
-	require.NoError(t, err)
-	assert.NotEqual(t, db1, db2)
-
-	// leave junk behind in db2 and drop its claim, as if the run that owned it had died
-	c2 := sel(t, db2)
-	_, err = valkey.DoContext(c2, ctx, "SET", "junk", "1")
-	require.NoError(t, err)
-	_, err = valkey.DoContext(c2, ctx, "DEL", claimKey)
-	require.NoError(t, err)
-	c2.Close()
-
-	// the next claimant gets it back, cleared
-	db3, err := claimFromTop(conn, "owner3", numDBs, deadline)
-	require.NoError(t, err)
-	assert.Equal(t, db2, db3)
-
-	c3 := sel(t, db3)
-	exists, err := valkey.Bool(valkey.DoContext(c3, ctx, "EXISTS", "junk"))
-	require.NoError(t, err)
-	assert.False(t, exists)
-	owner, err := valkey.String(valkey.DoContext(c3, ctx, "GET", claimKey))
-	require.NoError(t, err)
-	assert.Equal(t, "owner3", owner)
-
-	// owners can release their own claims but not each other's
-	released, err := release(getHostAddress(), db3, "owner1", nil)
-	assert.NoError(t, err)
-	assert.False(t, released)
-	released, err = release(getHostAddress(), db3, "owner3", nil)
-	assert.NoError(t, err)
-	assert.True(t, released)
-
-	isClaimed, err := valkey.Bool(valkey.DoContext(c3, ctx, "EXISTS", claimKey))
-	require.NoError(t, err)
-	assert.False(t, isClaimed)
-	c3.Close()
-
-	// a released claim can't be released again, and its database is claimable straight away
-	released, err = release(getHostAddress(), db3, "owner3", nil)
-	assert.NoError(t, err)
-	assert.False(t, released)
-
-	db4, err := claimFromTop(conn, "owner4", numDBs, deadline)
-	require.NoError(t, err)
-	assert.Equal(t, db3, db4)
-
-	// release this test's claims
-	for db, owner := range map[int]string{db1: "owner1", db4: "owner4"} {
-		released, err := release(getHostAddress(), db, owner, nil)
-		require.NoError(t, err)
-		assert.True(t, released)
-	}
-}
-
 func TestClaimDB(t *testing.T) {
 	ctx := context.Background()
 
@@ -247,21 +180,16 @@ func numDatabases(t *testing.T) int {
 	return n
 }
 
-func TestClaimFallsBackWithoutCoordinationDB(t *testing.T) {
-	ctx := context.Background()
+func TestClaimRequiresCoordination(t *testing.T) {
+	deadline := time.Now().Add(5 * time.Second)
 	numDBs := numDatabases(t)
 
-	// coordination through a database the instance doesn't have falls back to uncoordinated claims
-	db, used, err := claim(getHostAddress(), "owner1", &coordination{numDBs, numDBs + 1, numDBs + 10}, time.Now().Add(5*time.Second))
-	require.NoError(t, err)
-	assert.Nil(t, used)
+	_, err := claim(getHostAddress(), "owner1", nil, deadline)
+	assert.EqualError(t, err, "test database claims aren't coordinated, call assertvk.Coordinate first")
 
-	c := sel(t, db)
-	defer c.Close()
-	owner, err := valkey.String(valkey.DoContext(c, ctx, "GET", claimKey))
-	require.NoError(t, err)
-	assert.Equal(t, "owner1", owner)
-
-	_, err = valkey.DoContext(c, ctx, "DEL", claimKey)
-	require.NoError(t, err)
+	// the instance must have the coordination database and the whole pool
+	_, err = claim(getHostAddress(), "owner1", &coordination{numDBs, 1, 2}, deadline)
+	assert.EqualError(t, err, fmt.Sprintf("valkey at %s has %d databases, too few for coordination database %d and pool 1-2", getHostAddress(), numDBs, numDBs))
+	_, err = claim(getHostAddress(), "owner1", &coordination{0, 1, numDBs}, deadline)
+	assert.EqualError(t, err, fmt.Sprintf("valkey at %s has %d databases, too few for coordination database 0 and pool 1-%d", getHostAddress(), numDBs, numDBs))
 }
