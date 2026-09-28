@@ -142,17 +142,40 @@ cset.Add(ctx, vc, "E", 5)
 cset.Members(ctx, vc)      // ["C", "D", "E"] / [3, 4, 5]
 ```
 
-## Testing 
+## Testing
+
+### Database Pool
+
+Tests get their databases from a pool on the valkey server at `$VALKEY_HOST`, so that concurrent tests - other packages,
+other worktrees, other repos - sharing one server can't interfere with each other. Each call to `assertvk.TestDB` or
+`assertvk.TestDSN` claims a database for the calling test, waiting for one if they're all taken. It starts empty and is
+flushed and released when the test completes, so tests don't need to clean up after themselves.
+
+```go
+vp := assertvk.TestDB(t)   // a pool to the test's own database
+dsn := assertvk.TestDSN(t) // or its URL, for code that connects itself - each call claims a separate database
+```
+
+By default databases are taken from the top of the server's range, with each claim recorded in the claimed database
+itself, which suits a server used only for tests. A server shared more widely can instead dedicate one of its databases
+to coordinating claims on a range of others. Every test binary using the pool must coordinate the same way, before its
+first claim - e.g. from the `init` of a package every test imports:
+
+```go
+func init() {
+	assertvk.Coordinate(0, 1, 15) // coordinate claims on databases 1-15 through database 0
+}
+```
+
+Clients in other languages can share the pool by using the same protocol, documented in
+[assertvk/testdb.go](assertvk/testdb.go).
 
 ### Asserts
 
 The `assertvk` package contains several asserts useful for testing the state of a database.
 
-Each test claims its own database, which is flushed and released when the test completes:
-
 ```go
-vp := assertvk.TestDB(t) // or assertvk.TestDSN(t) for code that takes a URL
-vc := vp.Get()
+vc := assertvk.TestDB(t).Get()
 defer vc.Close()
 
 assertvk.Keys(t, vc, "*", []string{"foo", "bar"})
