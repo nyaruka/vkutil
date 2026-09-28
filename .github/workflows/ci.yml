@@ -8,24 +8,20 @@ jobs:
       image: golang:${{ matrix.go-version }}-trixie
 
     services:
+      # enough databases for the pool that tests coordinate their claims on (see TestMain)
       valkey7:
         image: valkey/valkey:7.2-alpine
-        ports:
-          - 6372:6379
+        env:
+          VALKEY_EXTRA_FLAGS: --databases 64
       valkey8:
         image: valkey/valkey:8.1-alpine
-        ports:
-          - 6380:6379
-      valkey8coord:
-        image: valkey/valkey:8.1-alpine
         env:
-          # enough databases for test claims to be coordinated (see assertvk/testdb.go)
           VALKEY_EXTRA_FLAGS: --databases 64
 
     strategy:
       matrix:
         go-version: ["1.25", "1.26", "1.27"]
-        valkey-host: [valkey7, valkey8, valkey8coord]
+        valkey-host: [valkey7, valkey8]
 
     steps:
     - name: Checkout code

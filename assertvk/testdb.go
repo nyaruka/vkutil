@@ -2,9 +2,9 @@ package assertvk
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
-	"slices"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -20,11 +20,8 @@ import (
 // so one whose owner died evaporates shortly after. Whatever a previous owner left behind is flushed on the next
 // claim.
 //
-// By default each claim is a key in the claimed database itself, with databases tried from the top of the
-// keyspace down - fine for a throwaway instance, but a test that flushes its database also drops its claim.
-//
-// Instances shared more widely can instead dedicate a coordination database to claims on a pool of databases
-// (see Coordinate). Its testdbs:claims sorted set holds each claimed database scored by when its claim expires,
+// Claims on a pool of databases are coordinated through a dedicated coordination database (see Coordinate), which
+// every binary must set up before it claims. Its testdbs:claims sorted set holds each claimed database scored by when its claim expires,
 // and its testdbs:owners hash holds each claimed database's owner. Claiming, renewing and releasing are the Lua
 // scripts below, which any client sharing the pool must use as-is. Claims live outside the claimed databases, so
 // tests can flush their own database freely.
@@ -34,9 +31,6 @@ const (
 
 	claimsKey = "testdbs:claims"
 	ownersKey = "testdbs:owners"
-
-	claimKey      = "__assertvk_claim__" // an uncoordinated claim
-	claimBandSize = 16
 )
 
 // a coordination database and the pool of databases it coordinates claims on
@@ -48,7 +42,7 @@ type coordination struct {
 type heldClaim struct {
 	db    int
 	owner string
-	coord *coordination // nil if uncoordinated
+	coord *coordination
 
 	stop    chan struct{} // closed to stop renewing
 	stopped chan struct{} // closed once renewing has stopped
@@ -62,9 +56,8 @@ var (
 )
 
 // Coordinate makes this binary claim its test database from the pool first..last through the coordination
-// database db, falling back to uncoordinated claims on an instance without that database. Every binary sharing
-// the pool must use the same values, and it must be called before the test database is first used, e.g. from
-// the init of a package every test imports.
+// database db. The instance must have all of those databases. Every binary sharing the pool must use the same
+// values, and it must be called before the test database is first used, e.g. from TestMain.
 func Coordinate(db, first, last int) {
 	if db < 0 || first < 0 || first > last || (db >= first && db <= last) {
 		panic(fmt.Sprintf("invalid test database coordination: db %d, pool %d-%d", db, first, last))
@@ -120,14 +113,6 @@ redis.call("HDEL", KEYS[2], ARGV[1])
 return 1
 `)
 
-// deletes the uncoordinated claim KEYS[1] if it's still held by owner ARGV[1]
-var releaseKeyScript = valkey.NewScript(1, `
-if redis.call("GET", KEYS[1]) ~= ARGV[1] then
-	return 0
-end
-return redis.call("DEL", KEYS[1])
-`)
-
 // hold claims a database and starts renewing the claim
 func hold() (*heldClaim, error) {
 	hostname, _ := os.Hostname()
@@ -139,44 +124,45 @@ func hold() (*heldClaim, error) {
 	c := coord
 	mu.Unlock()
 
-	db, used, err := claim(getHostAddress(), owner, c, time.Now().Add(3*time.Minute))
+	db, err := claim(getHostAddress(), owner, c, time.Now().Add(3*time.Minute))
 	if err != nil {
 		return nil, err
 	}
 
-	h := &heldClaim{db: db, owner: owner, coord: used, stop: make(chan struct{}), stopped: make(chan struct{})}
+	h := &heldClaim{db: db, owner: owner, coord: c, stop: make(chan struct{}), stopped: make(chan struct{})}
 	go h.keep()
 	return h, nil
 }
 
-// claim finds and claims an unclaimed database, clearing anything a previous owner left behind, and returns
-// the coordination used, if any. If every database is claimed it keeps trying until the deadline - claims
-// from dead runs expire.
-func claim(addr, owner string, c *coordination, deadline time.Time) (int, *coordination, error) {
+// claim finds and claims an unclaimed database in the coordinated pool, clearing anything a previous owner left
+// behind. If every database is claimed it keeps trying until the deadline - claims from dead runs expire.
+func claim(addr, owner string, c *coordination, deadline time.Time) (int, error) {
 	ctx := context.Background()
+
+	if c == nil {
+		return 0, errors.New("test database claims aren't coordinated, call assertvk.Coordinate first")
+	}
 
 	conn, err := valkey.Dial("tcp", addr)
 	if err != nil {
-		return 0, nil, fmt.Errorf("error connecting to valkey: %w", err)
+		return 0, fmt.Errorf("error connecting to valkey: %w", err)
 	}
 	defer conn.Close()
 
 	cfg, err := valkey.Strings(valkey.DoContext(conn, ctx, "CONFIG", "GET", "databases"))
 	if err != nil || len(cfg) != 2 {
-		return 0, nil, fmt.Errorf("error reading valkey database count: %w", err)
+		return 0, fmt.Errorf("error reading valkey database count: %w", err)
 	}
 	numDBs, err := strconv.Atoi(cfg[1])
 	if err != nil {
-		return 0, nil, fmt.Errorf("error parsing valkey database count: %w", err)
+		return 0, fmt.Errorf("error parsing valkey database count: %w", err)
 	}
 
-	if c != nil && numDBs > max(c.db, c.first) {
-		c = &coordination{c.db, c.first, min(c.last, numDBs-1)} // as much of the pool as exists
-		db, err := claimFromPool(conn, owner, c, deadline)
-		return db, c, err
+	if numDBs <= max(c.db, c.last) {
+		return 0, fmt.Errorf("valkey at %s has %d databases, too few for coordination database %d and pool %d-%d", addr, numDBs, c.db, c.first, c.last)
 	}
-	db, err := claimFromTop(conn, owner, numDBs, deadline)
-	return db, nil, err
+
+	return claimFromPool(conn, owner, c, deadline)
 }
 
 // claimFromPool claims a database from a coordinated pool
@@ -203,30 +189,6 @@ func claimFromPool(conn valkey.Conn, owner string, c *coordination, deadline tim
 		}
 		if time.Now().After(deadline) {
 			return 0, fmt.Errorf("timed out waiting for an unclaimed test database (tried %d-%d)", c.first, c.last)
-		}
-		time.Sleep(250 * time.Millisecond)
-	}
-}
-
-// claimFromTop claims a database by trying them from the top of the keyspace down
-func claimFromTop(conn valkey.Conn, owner string, numDBs int, deadline time.Time) (int, error) {
-	ctx := context.Background()
-
-	for {
-		for db := numDBs - 1; db >= numDBs-claimBandSize && db >= 0; db-- {
-			if _, err := valkey.DoContext(conn, ctx, "SELECT", db); err != nil {
-				return 0, fmt.Errorf("error selecting database %d: %w", db, err)
-			}
-			set, err := valkey.String(valkey.DoContext(conn, ctx, "SET", claimKey, owner, "NX", "EX", int(claimTTL.Seconds())))
-			if err != nil && err != valkey.ErrNil {
-				return 0, fmt.Errorf("error claiming database %d: %w", db, err)
-			}
-			if set == "OK" {
-				return db, clear(conn)
-			}
-		}
-		if time.Now().After(deadline) {
-			return 0, fmt.Errorf("timed out waiting for an unclaimed test database (tried %d-%d)", max(numDBs-claimBandSize, 0), numDBs-1)
 		}
 		time.Sleep(250 * time.Millisecond)
 	}
@@ -265,8 +227,8 @@ func (h *heldClaim) release() error {
 	if _, err := valkey.DoContext(conn, context.Background(), "SELECT", h.db); err != nil {
 		return fmt.Errorf("error selecting database: %w", err)
 	}
-	if err := clear(conn); err != nil { // while we still own it
-		return err
+	if _, err := valkey.DoContext(conn, context.Background(), "FLUSHDB"); err != nil { // while we still own it
+		return fmt.Errorf("error flushing database: %w", err)
 	}
 
 	_, err = release(getHostAddress(), h.db, h.owner, h.coord)
@@ -282,12 +244,6 @@ func renew(addr string, db int, owner string, c *coordination) (bool, error) {
 		return false, err
 	}
 	defer conn.Close()
-
-	if c == nil {
-		valkey.DoContext(conn, ctx, "SELECT", db)
-		_, err := valkey.DoContext(conn, ctx, "EXPIRE", claimKey, int(claimTTL.Seconds()))
-		return true, err
-	}
 
 	if _, err := valkey.DoContext(conn, ctx, "SELECT", c.db); err != nil {
 		return false, err
@@ -306,40 +262,11 @@ func release(addr string, db int, owner string, c *coordination) (bool, error) {
 	}
 	defer conn.Close()
 
-	if c == nil {
-		if _, err := valkey.DoContext(conn, ctx, "SELECT", db); err != nil {
-			return false, err
-		}
-		released, err := valkey.Int(releaseKeyScript.DoContext(ctx, conn, claimKey, owner))
-		return released == 1, err
-	}
-
 	if _, err := valkey.DoContext(conn, ctx, "SELECT", c.db); err != nil {
 		return false, err
 	}
 	released, err := valkey.Int(releaseScript.DoContext(ctx, conn, claimsKey, ownersKey, db, owner))
 	return released == 1, err
-}
-
-// clear deletes everything in the connection's currently selected database except the claim on it
-func clear(conn valkey.Conn) error {
-	ctx := context.Background()
-
-	keys, err := valkey.Strings(valkey.DoContext(conn, ctx, "KEYS", "*"))
-	if err != nil {
-		return fmt.Errorf("error listing keys: %w", err)
-	}
-	keys = slices.DeleteFunc(keys, func(k string) bool { return k == claimKey })
-	if len(keys) > 0 {
-		args := make([]any, len(keys))
-		for i, k := range keys {
-			args[i] = k
-		}
-		if _, err := valkey.DoContext(conn, ctx, "DEL", args...); err != nil {
-			return fmt.Errorf("error deleting keys: %w", err)
-		}
-	}
-	return nil
 }
 
 // ClaimedDB is a database claimed by a test
@@ -353,8 +280,8 @@ type ClaimedDB struct {
 // Pool returns a pool of connections to the database
 func (d *ClaimedDB) Pool() *valkey.Pool { return d.pool }
 
-// ClaimDB claims a database for the given test, waiting for one to be free. The database starts empty and is flushed
-// and released when the test completes. Each call claims a separate database.
+// ClaimDB claims a database for the given test from the pool set up by Coordinate, waiting for one to be free. The
+// database starts empty and is flushed and released when the test completes. Each call claims a separate database.
 func ClaimDB(t testing.TB) *ClaimedDB {
 	t.Helper()
 

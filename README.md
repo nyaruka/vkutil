@@ -161,14 +161,15 @@ vp := db.Pool()           // for code that takes a pool
 url := db.URL             // or for code that takes a URL
 ```
 
-By default databases are taken from the top of the server's range, with each claim recorded in the claimed database
-itself, which suits a server used only for tests. A server shared more widely can instead dedicate one of its databases
-to coordinating claims on a range of others. Every test binary using the pool must coordinate the same way, before its
-first claim - e.g. from the `init` of a package every test imports:
+Claims are coordinated through one of the server's databases, dedicated to recording claims on a range of others. Every
+test binary using the pool must coordinate the same way before its first claim, e.g. from `TestMain`, and `ClaimDB`
+fails the test if it hasn't or if the server doesn't have those databases:
 
 ```go
-func init() {
+func TestMain(m *testing.M) {
 	assertvk.Coordinate(0, 1, 15) // coordinate claims on databases 1-15 through database 0
+
+	os.Exit(m.Run())
 }
 ```
 
