@@ -90,12 +90,37 @@ func TestClaimFromPool(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, held)
 
+	// owners can release their own claims but not each other's
+	released, err := release(getHostAddress(), db3, "owner1", coord)
+	assert.NoError(t, err)
+	assert.False(t, released)
+	released, err = release(getHostAddress(), db3, "owner3", coord)
+	assert.NoError(t, err)
+	assert.True(t, released)
+
+	isClaimed, err := valkey.Bool(valkey.DoContext(conn, ctx, "HEXISTS", ownersKey, db3))
+	require.NoError(t, err)
+	assert.False(t, isClaimed)
+	_, err = valkey.Float64(valkey.DoContext(conn, ctx, "ZSCORE", claimsKey, db3))
+	assert.Equal(t, valkey.ErrNil, err)
+
+	// a released claim can't be renewed or released again, and its database is claimable straight away
+	held, err = renew(getHostAddress(), db3, "owner3", coord)
+	assert.NoError(t, err)
+	assert.False(t, held)
+	released, err = release(getHostAddress(), db3, "owner3", coord)
+	assert.NoError(t, err)
+	assert.False(t, released)
+
+	db4, err := claimFromPool("owner4")
+	require.NoError(t, err)
+	assert.Equal(t, db3, db4)
+
 	// release this test's claims
-	for _, db := range []int{db1, db3} {
-		_, err = valkey.DoContext(conn, ctx, "ZREM", claimsKey, db)
+	for db, owner := range map[int]string{db1: "owner1", db4: "owner4"} {
+		released, err := release(getHostAddress(), db, owner, coord)
 		require.NoError(t, err)
-		_, err = valkey.DoContext(conn, ctx, "HDEL", ownersKey, db)
-		require.NoError(t, err)
+		assert.True(t, released)
 	}
 }
 
@@ -136,15 +161,73 @@ func TestClaimFromTop(t *testing.T) {
 	owner, err := valkey.String(valkey.DoContext(c3, ctx, "GET", claimKey))
 	require.NoError(t, err)
 	assert.Equal(t, "owner3", owner)
+
+	// owners can release their own claims but not each other's
+	released, err := release(getHostAddress(), db3, "owner1", nil)
+	assert.NoError(t, err)
+	assert.False(t, released)
+	released, err = release(getHostAddress(), db3, "owner3", nil)
+	assert.NoError(t, err)
+	assert.True(t, released)
+
+	isClaimed, err := valkey.Bool(valkey.DoContext(c3, ctx, "EXISTS", claimKey))
+	require.NoError(t, err)
+	assert.False(t, isClaimed)
 	c3.Close()
 
+	// a released claim can't be released again, and its database is claimable straight away
+	released, err = release(getHostAddress(), db3, "owner3", nil)
+	assert.NoError(t, err)
+	assert.False(t, released)
+
+	db4, err := claimFromTop(conn, "owner4", numDBs, deadline)
+	require.NoError(t, err)
+	assert.Equal(t, db3, db4)
+
 	// release this test's claims
-	for _, db := range []int{db1, db3} {
-		c := sel(t, db)
-		_, err = valkey.DoContext(c, ctx, "DEL", claimKey)
+	for db, owner := range map[int]string{db1: "owner1", db4: "owner4"} {
+		released, err := release(getHostAddress(), db, owner, nil)
 		require.NoError(t, err)
-		c.Close()
+		assert.True(t, released)
 	}
+}
+
+func TestHeldClaimRelease(t *testing.T) {
+	ctx := context.Background()
+	numDBs := numDatabases(t)
+
+	conn := sel(t, 0)
+	defer conn.Close()
+
+	db, err := claimFromTop(conn, "owner1", numDBs, time.Now().Add(5*time.Second))
+	require.NoError(t, err)
+
+	h := &heldClaim{db: db, owner: "owner1", stop: make(chan struct{}), stopped: make(chan struct{})}
+	go h.keep()
+
+	c := sel(t, db)
+	defer c.Close()
+	_, err = valkey.DoContext(c, ctx, "SET", "data", "1")
+	require.NoError(t, err)
+
+	// releasing stops renewals and drops the claim, but leaves the data for inspection
+	h.release()
+
+	select {
+	case <-h.stopped:
+	default:
+		assert.Fail(t, "claim still being renewed")
+	}
+	assertExists := func(key string, expected bool) {
+		exists, err := valkey.Bool(valkey.DoContext(c, ctx, "EXISTS", key))
+		require.NoError(t, err)
+		assert.Equal(t, expected, exists, "exists %s", key)
+	}
+	assertExists(claimKey, false)
+	assertExists("data", true)
+
+	_, err = valkey.DoContext(c, ctx, "DEL", "data")
+	require.NoError(t, err)
 }
 
 // sel returns a new connection to the given database

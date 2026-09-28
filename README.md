@@ -160,3 +160,14 @@ assertvk.Get(t, vc, "foo", "123")
 assertvk.SCard(t, vc, "foo_set", 2)
 assertvk.SMembers(t, vc, "foo_set", []string{"123", "234"})
 ```
+
+Each test binary claims its own database. Release it when the binary's tests finish, so that other test binaries
+don't have to wait for the claim to expire:
+
+```go
+func TestMain(m *testing.M) {
+    code := m.Run()
+    assertvk.Release()
+    os.Exit(code)
+}
+```
