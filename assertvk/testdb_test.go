@@ -60,3 +60,32 @@ func TestClaim(t *testing.T) {
 		conn.Close()
 	}
 }
+
+func TestClaimBand(t *testing.T) {
+	tcs := []struct {
+		band        string
+		numDBs      int
+		first, last int
+		err         string
+	}{
+		{"", 16, 0, 15, ""},
+		{"", 128, 112, 127, ""},
+		{"", 8, 0, 7, ""},
+		{"80-95", 128, 80, 95, ""},
+		{"5-5", 16, 5, 5, ""},
+		{"80-95", 16, 0, 0, `invalid VALKEY_TEST_DBS "80-95" for an instance with 16 databases`},
+		{"95-80", 128, 0, 0, `invalid VALKEY_TEST_DBS "95-80" for an instance with 128 databases`},
+		{"80", 128, 0, 0, `invalid VALKEY_TEST_DBS "80" for an instance with 128 databases`},
+		{"x-y", 128, 0, 0, `invalid VALKEY_TEST_DBS "x-y" for an instance with 128 databases`},
+	}
+	for _, tc := range tcs {
+		first, last, err := claimBand(tc.band, tc.numDBs)
+		if tc.err != "" {
+			assert.EqualError(t, err, tc.err, "error mismatch for %q/%d", tc.band, tc.numDBs)
+		} else {
+			assert.NoError(t, err, "unexpected error for %q/%d", tc.band, tc.numDBs)
+			assert.Equal(t, tc.first, first, "first mismatch for %q/%d", tc.band, tc.numDBs)
+			assert.Equal(t, tc.last, last, "last mismatch for %q/%d", tc.band, tc.numDBs)
+		}
+	}
+}

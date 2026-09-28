@@ -6,6 +6,7 @@ import (
 	"os"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,11 +14,12 @@ import (
 )
 
 // Each test binary claims its own logical database so that concurrent test runs - other packages, other
-// worktrees, other repos - sharing a valkey instance can't interfere with each other. Databases are tried
-// from the top of the instance's keyspace downward: 15..0 on a default 16 database instance (e.g. a
-// throwaway CI service), 127..112 on a shared instance configured with 128 databases and that band reserved
-// for test claims. A claim is a key with a TTL kept alive for the binary's lifetime, so it evaporates
-// shortly after the run that owns it ends, and whatever a dead run left behind is cleared on the next claim.
+// worktrees, other repos - sharing a valkey instance can't interfere with each other. Databases are claimed
+// from a band, tried from its top downward: the band given by VALKEY_TEST_DBS (e.g. "80-95") on a shared
+// instance which reserves one for test claims, else the top 16 of the instance's keyspace (15..0 on a
+// default instance, e.g. a throwaway CI service). A claim is a key with a TTL kept alive for the binary's
+// lifetime, so it evaporates shortly after the run that owns it ends, and whatever a dead run left behind is
+// cleared on the next claim.
 
 const (
 	claimKey      = "__assertvk_claim__"
@@ -55,9 +57,13 @@ func claim(addr, owner string, deadline time.Time) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("error parsing valkey database count: %w", err)
 	}
+	first, last, err := claimBand(os.Getenv("VALKEY_TEST_DBS"), numDBs)
+	if err != nil {
+		return 0, err
+	}
 
 	for {
-		for db := numDBs - 1; db >= numDBs-claimBandSize && db >= 0; db-- {
+		for db := last; db >= first; db-- {
 			if _, err := valkey.DoContext(conn, ctx, "SELECT", db); err != nil {
 				return 0, fmt.Errorf("error selecting database %d: %w", db, err)
 			}
@@ -70,10 +76,26 @@ func claim(addr, owner string, deadline time.Time) (int, error) {
 			}
 		}
 		if time.Now().After(deadline) {
-			return 0, fmt.Errorf("timed out waiting for an unclaimed test database (tried %d-%d)", max(numDBs-claimBandSize, 0), numDBs-1)
+			return 0, fmt.Errorf("timed out waiting for an unclaimed test database (tried %d-%d)", first, last)
 		}
 		time.Sleep(250 * time.Millisecond)
 	}
+}
+
+// claimBand returns the first and last databases of the band to claim from - the given "<first>-<last>" band if
+// there is one, else the top of the keyspace
+func claimBand(band string, numDBs int) (int, int, error) {
+	if band == "" {
+		return max(numDBs-claimBandSize, 0), numDBs - 1, nil
+	}
+
+	f, l, _ := strings.Cut(band, "-")
+	first, err1 := strconv.Atoi(f)
+	last, err2 := strconv.Atoi(l)
+	if err1 != nil || err2 != nil || first < 0 || first > last || last >= numDBs {
+		return 0, 0, fmt.Errorf("invalid VALKEY_TEST_DBS %q for an instance with %d databases", band, numDBs)
+	}
+	return first, last, nil
 }
 
 // keepClaim refreshes this binary's claim until the binary exits
