@@ -146,10 +146,14 @@ cset.Members(ctx, vc)      // ["C", "D", "E"] / [3, 4, 5]
 
 ### Database Pool
 
-Tests get their databases from a pool on the valkey server at `$VALKEY_HOST`, so that concurrent tests - other packages,
-other worktrees, other repos - sharing one server can't interfere with each other. Each call to `assertvk.TestDB` or
-`assertvk.TestDSN` claims a database for the calling test, waiting for one if they're all taken. It starts empty and is
-flushed and released when the test completes, so tests don't need to clean up after themselves.
+Tests that share a valkey database can't safely run at the same time: one test's keys show up in another's asserts, and
+one test's flush wipes out another's state. That rules out `t.Parallel()`, and also `go test ./...`, which runs
+packages' test binaries in parallel. It also rules out running several test suites, from other worktrees or other
+repos, against the same server.
+
+So each test gets its own database from a pool on the valkey server at `$VALKEY_HOST`. Each call to `assertvk.TestDB`
+or `assertvk.TestDSN` claims a database for the calling test, waiting for one if they're all taken. It starts empty and
+is flushed and released when the test completes, so tests don't need to clean up after themselves.
 
 ```go
 vp := assertvk.TestDB(t)   // a pool to the test's own database
