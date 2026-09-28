@@ -11,11 +11,9 @@ import (
 
 func TestAsserts(t *testing.T) {
 	ctx := context.Background()
-	vp := assertvk.TestDB()
+	vp := assertvk.TestDB(t)
 	vc := vp.Get()
 	defer vc.Close()
-
-	defer assertvk.FlushDB()
 
 	valkey.DoContext(vc, ctx, "SET", "mykey", "one")
 

@@ -14,11 +14,9 @@ import (
 
 func TestCappedZSet(t *testing.T) {
 	ctx := context.Background()
-	vp := assertvk.TestDB()
+	vp := assertvk.TestDB(t)
 	vc := vp.Get()
 	defer vc.Close()
-
-	defer assertvk.FlushDB()
 
 	assertMembers := func(s *vkutil.CappedZSet, expectedMembers []string, expectedScores []float64) {
 		actualMembers, actualScores, err := s.Members(ctx, vc)
@@ -68,11 +66,9 @@ func TestCappedZSet(t *testing.T) {
 
 func TestCappedZSetExpiry(t *testing.T) {
 	ctx := context.Background()
-	vp := assertvk.TestDB()
+	vp := assertvk.TestDB(t)
 	vc := vp.Get()
 	defer vc.Close()
-
-	defer assertvk.FlushDB()
 
 	// an expiry of under a second must still expire the set rather than delete it immediately
 	zset := vkutil.NewCappedZSet("foo", 3, time.Millisecond*500)

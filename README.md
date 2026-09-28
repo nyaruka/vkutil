@@ -142,15 +142,44 @@ cset.Add(ctx, vc, "E", 5)
 cset.Members(ctx, vc)      // ["C", "D", "E"] / [3, 4, 5]
 ```
 
-## Testing 
+## Testing
+
+### Database Pool
+
+Tests that share a valkey database can't safely run at the same time: one test's keys show up in another's asserts, and
+one test's flush wipes out another's state. That rules out `t.Parallel()`, and also `go test ./...`, which runs
+packages' test binaries in parallel. It also rules out running several test suites, from other worktrees or other
+repos, against the same server.
+
+So each test gets its own database from a pool on the valkey server at `$VALKEY_HOST`. Each call to `assertvk.TestDB`
+or `assertvk.TestDSN` claims a database for the calling test, waiting for one if they're all taken. It starts empty and
+is flushed and released when the test completes, so tests don't need to clean up after themselves.
+
+```go
+vp := assertvk.TestDB(t)   // a pool to the test's own database
+dsn := assertvk.TestDSN(t) // or its URL, for code that connects itself - each call claims a separate database
+```
+
+By default databases are taken from the top of the server's range, with each claim recorded in the claimed database
+itself, which suits a server used only for tests. A server shared more widely can instead dedicate one of its databases
+to coordinating claims on a range of others. Every test binary using the pool must coordinate the same way, before its
+first claim - e.g. from the `init` of a package every test imports:
+
+```go
+func init() {
+	assertvk.Coordinate(0, 1, 15) // coordinate claims on databases 1-15 through database 0
+}
+```
+
+Clients in other languages can share the pool by using the same protocol, documented in
+[assertvk/testdb.go](assertvk/testdb.go).
 
 ### Asserts
 
 The `assertvk` package contains several asserts useful for testing the state of a database.
 
 ```go
-vp := assertvk.TestDB()
-vc := vp.Get()
+vc := assertvk.TestDB(t).Get()
 defer vc.Close()
 
 assertvk.Keys(t, vc, "*", []string{"foo", "bar"})
@@ -159,15 +188,4 @@ assertvk.NotExists(t, vc, "bar")
 assertvk.Get(t, vc, "foo", "123")
 assertvk.SCard(t, vc, "foo_set", 2)
 assertvk.SMembers(t, vc, "foo_set", []string{"123", "234"})
-```
-
-Each test binary claims its own database. Release it when the binary's tests finish, so that other test binaries
-don't have to wait for the claim to expire:
-
-```go
-func TestMain(m *testing.M) {
-    code := m.Run()
-    assertvk.Release()
-    os.Exit(code)
-}
 ```

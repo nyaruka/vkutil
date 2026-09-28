@@ -14,11 +14,9 @@ import (
 
 func TestIntervalSeries(t *testing.T) {
 	ctx := context.Background()
-	vp := assertvk.TestDB()
+	vp := assertvk.TestDB(t)
 	vc := vp.Get()
 	defer vc.Close()
-
-	defer assertvk.FlushDB()
 
 	defer vkutil.SetNow(time.Now)
 	setNow := func(d time.Time) { vkutil.SetNow(func() time.Time { return d }) }
@@ -107,11 +105,10 @@ func TestIntervalSeries(t *testing.T) {
 
 func TestIntervalSeriesExpiry(t *testing.T) {
 	ctx := context.Background()
-	vp := assertvk.TestDB()
+	vp := assertvk.TestDB(t)
 	vc := vp.Get()
 	defer vc.Close()
 
-	defer assertvk.FlushDB()
 	defer vkutil.SetNow(time.Now)
 
 	vkutil.SetNow(func() time.Time { return time.Date(2021, 11, 18, 12, 7, 3, 0, time.UTC) })
@@ -143,11 +140,10 @@ func TestNewIntervalSeriesValidation(t *testing.T) {
 
 func TestIntervalSeriesTransactionErrors(t *testing.T) {
 	ctx := context.Background()
-	vp := assertvk.TestDB()
+	vp := assertvk.TestDB(t)
 	vc := vp.Get()
 	defer vc.Close()
 
-	defer assertvk.FlushDB()
 	defer vkutil.SetNow(time.Now)
 
 	vkutil.SetNow(func() time.Time { return time.Date(2021, 11, 18, 12, 7, 3, 0, time.UTC) })

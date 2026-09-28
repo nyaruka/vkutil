@@ -15,11 +15,9 @@ import (
 
 func TestIntervalHash(t *testing.T) {
 	ctx := context.Background()
-	vp := assertvk.TestDB()
+	vp := assertvk.TestDB(t)
 	vc := vp.Get()
 	defer vc.Close()
-
-	defer assertvk.FlushDB()
 
 	defer vkutil.SetNow(time.Now)
 	setNow := func(d time.Time) { vkutil.SetNow(func() time.Time { return d }) }
@@ -146,11 +144,10 @@ func TestIntervalHash(t *testing.T) {
 
 func TestIntervalHashExpiry(t *testing.T) {
 	ctx := context.Background()
-	vp := assertvk.TestDB()
+	vp := assertvk.TestDB(t)
 	vc := vp.Get()
 	defer vc.Close()
 
-	defer assertvk.FlushDB()
 	defer vkutil.SetNow(time.Now)
 
 	vkutil.SetNow(func() time.Time { return time.Date(2021, 11, 18, 12, 7, 3, 0, time.UTC) })
@@ -182,11 +179,10 @@ func TestNewIntervalHashValidation(t *testing.T) {
 
 func TestIntervalHashMGetAcrossIntervals(t *testing.T) {
 	ctx := context.Background()
-	vp := assertvk.TestDB()
+	vp := assertvk.TestDB(t)
 	vc := vp.Get()
 	defer vc.Close()
 
-	defer assertvk.FlushDB()
 	defer vkutil.SetNow(time.Now)
 
 	setNow := func(d time.Time) { vkutil.SetNow(func() time.Time { return d }) }
@@ -214,11 +210,10 @@ func TestIntervalHashMGetAcrossIntervals(t *testing.T) {
 
 func TestIntervalHashTransactionErrors(t *testing.T) {
 	ctx := context.Background()
-	vp := assertvk.TestDB()
+	vp := assertvk.TestDB(t)
 	vc := vp.Get()
 	defer vc.Close()
 
-	defer assertvk.FlushDB()
 	defer vkutil.SetNow(time.Now)
 
 	vkutil.SetNow(func() time.Time { return time.Date(2021, 11, 18, 12, 7, 3, 0, time.UTC) })
