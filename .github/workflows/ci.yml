@@ -16,11 +16,16 @@ jobs:
         image: valkey/valkey:8.1-alpine
         ports:
           - 6380:6379
+      valkey8coord:
+        image: valkey/valkey:8.1-alpine
+        env:
+          # enough databases for test claims to be coordinated (see assertvk/testdb.go)
+          VALKEY_EXTRA_FLAGS: --databases 64
 
     strategy:
       matrix:
         go-version: ["1.25", "1.26", "1.27"]
-        valkey-host: [valkey7, valkey8]
+        valkey-host: [valkey7, valkey8, valkey8coord]
 
     steps:
     - name: Checkout code
