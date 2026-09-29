@@ -1,22 +1,17 @@
-v0.27.0 (2026-09-28)
--------------------------
+## v0.27.0 (2026-09-28)
  * Require test database claims to be coordinated, removing uncoordinated claims
 
-v0.26.0 (2026-09-28)
--------------------------
+## v0.26.0 (2026-09-28)
  * Add assertvk.Release to release a test binary's database claim when its tests finish
  * Add assertvk.ClaimDB to claim a test database per test, giving both a pool and a URL, and flush and release it when the test completes
 
-v0.25.0 (2026-09-28)
--------------------------
+## v0.25.0 (2026-09-28)
  * Allow test database claims to be coordinated through a dedicated database
 
-v0.24.0 (2026-09-09)
--------------------------
+## v0.24.0 (2026-09-09)
  * Have each test binary claim its own valkey database so concurrent test runs can't interfere with each other
 
-v0.23.0 (2026-08-31)
--------------------------
+## v0.23.0 (2026-08-31)
  * Add TLS support via valkeys:// and rediss:// URL schemes
  * Add ACL style AUTH for URLs which include a username
  * Fix connection leak when a pooled connection can't be initialized
@@ -28,147 +23,115 @@ v0.23.0 (2026-08-31)
  * Reject valkey URLs with an unrecognized scheme or a non-numeric database
  * Update to Go 1.25
 
-v0.22.0 (2026-07-07)
--------------------------
+## v0.22.0 (2026-07-07)
  * Remove queues package
 
-v0.21.0 (2026-07-03)
--------------------------
+## v0.21.0 (2026-07-03)
  * Remove gocommon dependency
  * Bump valkey from 8.0 to 8.1 in CI
 
-v0.20.0 (2025-08-01)
--------------------------
+## v0.20.0 (2025-08-01)
  * Add queues.Fair.Dump for debugging
  * Remove workaround for id-less tasks
 
-v0.19.2 (2025-07-31)
--------------------------
+## v0.19.2 (2025-07-31)
  * Fix tests
 
-v0.19.1 (2025-07-31)
--------------------------
+## v0.19.1 (2025-07-31)
  * Fix return type of Fair.Paused and Fair.Queued
 
-v0.19.0 (2025-07-31)
--------------------------
+## v0.19.0 (2025-07-31)
  * Add ids to tasks (v7 uuids)
 
-v0.18.0 (2025-07-30)
--------------------------
+## v0.18.0 (2025-07-30)
  * Remove ping test from NewPool
 
-v0.17.0 (2025-07-09)
--------------------------
+## v0.17.0 (2025-07-09)
  * Change queues.Fair so owner queue keys have same hashtag as other keys
 
-v0.16.0 (2025-07-08)
--------------------------
+## v0.16.0 (2025-07-08)
  * Move Locker into new locks package
 
-v0.15.0 (2025-07-08)
--------------------------
+## v0.15.0 (2025-07-08)
  * Remove :q from owner specific queue keys as it's not needed
 
-v0.14.0 (2025-07-08)
--------------------------
+## v0.14.0 (2025-07-08)
  * Remove support for not using hashtags
  * Add notice to README about cluster mode
 
-v0.13.0 (2025-07-07)
--------------------------
+## v0.13.0 (2025-07-07)
  * More redis > valkey renaming
  * For all multi-key structs, add option to put hashtags in keys
  * Add implementation of fair queue in queues.Fair
 
-v0.12.0 (2025-06-12)
--------------------------
+## v0.12.0 (2025-06-12)
  * Switch to valkey
 
-v0.11.0 (2025-06-09)
--------------------------
+## v0.11.0 (2025-06-09)
  * Update deps
  * Add context.Context support to all main library functions
 
-v0.10.0 (2025-05-20)
--------------------------
+## v0.10.0 (2025-05-20)
  * Add Locker.IsLocked
  * Update go version and deps
 
-v0.9.0 (2024-12-17)
--------------------------
+## v0.9.0 (2024-12-17)
  * Test against redis 7 and valkey 8 too
  * Update deps
 
-v0.8.1 (2024-05-21)
--------------------------
+## v0.8.1 (2024-05-21)
  * Use std library errors
 
-v0.8.0 (2024-03-13)
--------------------------
+## v0.8.0 (2024-03-13)
  * Update assertredis asserts to take a connection instead of a pool
 
-v0.7.0 (2024-03-12)
--------------------------
+## v0.7.0 (2024-03-12)
  * Improve asserts
 
-v0.6.4 (2024-01-30)
--------------------------
+## v0.6.4 (2024-01-30)
  * Fix again
 
-v0.6.3 (2024-01-30)
--------------------------
+## v0.6.3 (2024-01-30)
  * Fix assertrange.LRange expected type
 
-v0.6.2 (2024-01-30)
--------------------------
+## v0.6.2 (2024-01-30)
  * Add assertredis.LRange
 
-v0.6.1 (2024-01-30)
--------------------------
+## v0.6.1 (2024-01-30)
  * Add assertredis.ZScore
 
-v0.6.0 (2024-01-12)
--------------------------
+## v0.6.0 (2024-01-12)
  * Add NewPool helper
  * Update deps
 
-v0.5.0 (2023-09-01)
--------------------------
+## v0.5.0 (2023-09-01)
  * Test on go 1.21
  * Tweak IntervalHash.Del and IntervalSet.Rem to support removing multiple keys like HDEL and SREM
  * Tweak method naming to be closer to the underlying redis commands
  * Implement MGET for interval hashes
 
-v0.4.0 (2023-08-31)
--------------------------
+## v0.4.0 (2023-08-31)
  * Improve redis asserts so they return the equality result
  * Add pattern arg to assertredis.Keys
  * Add assertredis.HGet 
  * Properly support sub minute interval times
 
-v0.3.1 (2023-05-24)
--------------------------
+## v0.3.1 (2023-05-24)
  * Fix assertredis.SIsMember
 
-v0.3.0 (2023-05-24)
--------------------------
+## v0.3.0 (2023-05-24)
  * Update dependencies
  * Add assertredis.SIsMember
 
-v0.2.2
-----------
+## v0.2.2 (2022-08-02)
  * Add assertredis.HLen and LLen
 
-v0.2.1
-----------
+## v0.2.1 (2022-01-12)
  * Switch from retracted redigo release to latest
 
-v0.2.0
-----------
+## v0.2.0 (2022-01-12)
  * Add assertredis.ZCard and assertredis.SCard
 
-v0.1.0
-----------
+## v0.1.0 (2021-12-23)
 * Initial revision
 
