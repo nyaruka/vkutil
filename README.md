@@ -144,11 +144,11 @@ cset.Members(ctx, vc)      // ["C", "D", "E"] / [3, 4, 5]
 
 ### RateLimiter
 
-The `RateLimiter` type limits how many times a key can be used in a fixed window, starting at its first use:
+The `RateLimiter` type limits how many times an id can be used in a fixed window, starting at its first use:
 
 ```go
-limiter := vkutil.NewRateLimiter(30, time.Minute)
-limiter.Allow(ctx, vc, "chat-typing:1234") // true for the first 30 uses in the window, then false
+limiter := vkutil.NewRateLimiter("chat-typing", 30, time.Minute)
+limiter.Allow(ctx, vc, "1234") // true for the first 30 uses in the window, then false
 ```
 
 ## Testing
