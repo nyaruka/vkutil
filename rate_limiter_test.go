@@ -18,14 +18,14 @@ func TestRateLimiter(t *testing.T) {
 	vc := assertvk.ClaimDB(t).Pool().Get()
 	defer vc.Close()
 
-	assertAllow := func(r *vkutil.RateLimiter, key string, expected bool) {
+	assertAllow := func(r *vkutil.RateLimiter, id string, expected bool) {
 		t.Helper()
-		allowed, err := r.Allow(ctx, vc, key)
+		allowed, err := r.Allow(ctx, vc, id)
 		assert.NoError(t, err)
 		assert.Equal(t, expected, allowed)
 	}
 
-	limiter := vkutil.NewRateLimiter(3, time.Minute)
+	limiter := vkutil.NewRateLimiter("typing", 3, time.Minute)
 
 	assertAllow(limiter, "foo", true)
 	assertAllow(limiter, "foo", true)
@@ -33,30 +33,34 @@ func TestRateLimiter(t *testing.T) {
 	assertAllow(limiter, "foo", false)
 	assertAllow(limiter, "foo", false)
 
-	// keys are limited independently
+	// ids are limited independently
 	assertAllow(limiter, "bar", true)
 
-	assertvk.Get(t, vc, "foo", "5")
-	assertvk.Get(t, vc, "bar", "1")
+	assertvk.Get(t, vc, "typing:foo", "5")
+	assertvk.Get(t, vc, "typing:bar", "1")
+
+	// limiters with different key bases don't share counts
+	assertAllow(vkutil.NewRateLimiter("other", 3, time.Minute), "foo", true)
+	assertvk.Get(t, vc, "other:foo", "1")
 
 	// the window starts at the first use and isn't extended by later uses
-	_, err := vc.Do("PEXPIRE", "foo", 5000)
+	_, err := vc.Do("PEXPIRE", "typing:foo", 5000)
 	require.NoError(t, err)
 	assertAllow(limiter, "foo", false)
 
-	ttl, err := valkey.Int(vc.Do("PTTL", "foo"))
+	ttl, err := valkey.Int(vc.Do("PTTL", "typing:foo"))
 	require.NoError(t, err)
 	assert.LessOrEqual(t, ttl, 5000)
 
 	// once the window ends, uses are allowed again
-	_, err = vc.Do("DEL", "foo")
+	_, err = vc.Do("DEL", "typing:foo")
 	require.NoError(t, err)
 	assertAllow(limiter, "foo", true)
 
-	ttl, err = valkey.Int(vc.Do("PTTL", "foo"))
+	ttl, err = valkey.Int(vc.Do("PTTL", "typing:foo"))
 	require.NoError(t, err)
 	assert.Greater(t, ttl, 59000)
 
-	assert.Panics(t, func() { vkutil.NewRateLimiter(0, time.Minute) })
-	assert.Panics(t, func() { vkutil.NewRateLimiter(3, 0) })
+	assert.Panics(t, func() { vkutil.NewRateLimiter("typing", 0, time.Minute) })
+	assert.Panics(t, func() { vkutil.NewRateLimiter("typing", 3, 0) })
 }

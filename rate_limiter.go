@@ -8,15 +8,16 @@ import (
 	valkey "github.com/gomodule/redigo/redis"
 )
 
-// RateLimiter limits how often something can happen per key, over a fixed window starting at a key's first use
+// RateLimiter limits how often something can happen per id, over a fixed window starting at an id's first use
 type RateLimiter struct {
-	limit  int
-	window time.Duration
+	keyBase string
+	limit   int
+	window  time.Duration
 }
 
-// NewRateLimiter creates a new rate limiter which allows limit uses of a key per window. It panics if limit or window
+// NewRateLimiter creates a new rate limiter which allows limit uses of an id per window. It panics if limit or window
 // aren't positive, as neither can be honoured.
-func NewRateLimiter(limit int, window time.Duration) *RateLimiter {
+func NewRateLimiter(keyBase string, limit int, window time.Duration) *RateLimiter {
 	if limit <= 0 {
 		panic("limit must be greater than zero")
 	}
@@ -24,17 +25,17 @@ func NewRateLimiter(limit int, window time.Duration) *RateLimiter {
 		panic("window must be greater than zero")
 	}
 
-	return &RateLimiter{limit: limit, window: window}
+	return &RateLimiter{keyBase: keyBase, limit: limit, window: window}
 }
 
 //go:embed lua/rlimit_incr.lua
 var rlimitIncr string
 var rlimitIncrScript = valkey.NewScript(1, rlimitIncr)
 
-// Allow counts a use of the given key and returns whether it's within the limit. Only the first use in a window sets
-// the key's expiry, so steady use can't keep extending the window.
-func (r *RateLimiter) Allow(ctx context.Context, vc valkey.Conn, key string) (bool, error) {
-	count, err := valkey.Int(rlimitIncrScript.DoContext(ctx, vc, key, r.window.Milliseconds()))
+// Allow counts a use of the given id and returns whether it's within the limit. Only the first use in a window sets
+// the id's expiry, so steady use can't keep extending the window.
+func (r *RateLimiter) Allow(ctx context.Context, vc valkey.Conn, id string) (bool, error) {
+	count, err := valkey.Int(rlimitIncrScript.DoContext(ctx, vc, r.keyBase+":"+id, r.window.Milliseconds()))
 	if err != nil {
 		return false, err
 	}
