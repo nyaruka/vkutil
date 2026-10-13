@@ -1,3 +1,6 @@
+## v1.0.0 (2026-10-13)
+ * Change RateLimiter.Allow to take an id plus a configured key base instead of a full key
+
 ## v0.28.0 (2026-10-13)
  * Add RateLimiter for fixed window rate limiting per key
  * Drop testing on Go 1.25 and require Go 1.26
