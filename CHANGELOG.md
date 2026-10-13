@@ -1,3 +1,7 @@
+## v0.28.0 (2026-10-13)
+ * Add RateLimiter for fixed window rate limiting per key
+ * Drop testing on Go 1.25 and require Go 1.26
+
 ## v0.27.0 (2026-09-28)
  * Require test database claims to be coordinated, removing uncoordinated claims
 
