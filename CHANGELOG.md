@@ -1,3 +1,6 @@
+## v0.29.0 (2026-10-13)
+ * Change RateLimiter to take a key base so Allow accepts an id rather than a full key
+
 ## v0.28.0 (2026-10-13)
  * Add RateLimiter for fixed window rate limiting per key
  * Drop testing on Go 1.25 and require Go 1.26
