@@ -1,6 +1,7 @@
 package vkutil_test
 
 import (
+	"errors"
 	"io"
 	"net"
 	"testing"
@@ -88,4 +89,35 @@ func TestNewPoolTLS(t *testing.T) {
 
 	// whereas a TLS scheme must begin a handshake, so the first byte is a TLS record type
 	assert.Equal(t, byte(0x16), firstByte("valkeys://"+ln.Addr().String()+"/0"))
+}
+
+func TestNewPoolTimeouts(t *testing.T) {
+	// a listener which accepts connections and reads from them but never replies, like a half-open connection
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer ln.Close()
+
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go io.Copy(io.Discard, conn)
+		}
+	}()
+
+	vp, err := vkutil.NewPool("valkey://"+ln.Addr().String()+"/0", vkutil.WithReadTimeout(100*time.Millisecond))
+	require.NoError(t, err)
+
+	start := time.Now()
+	vc := vp.Get()
+	_, err = vc.Do("PING")
+	vc.Close()
+
+	var netErr net.Error
+	if assert.True(t, errors.As(err, &netErr), "expected a network error, got %v", err) {
+		assert.True(t, netErr.Timeout())
+	}
+	assert.Less(t, time.Since(start), 5*time.Second)
 }
