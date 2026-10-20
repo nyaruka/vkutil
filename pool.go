@@ -10,19 +10,47 @@ import (
 	valkey "github.com/gomodule/redigo/redis"
 )
 
+// PoolOption configures a pool created by NewPool
+type PoolOption func(*poolOptions)
+
+type poolOptions struct {
+	maxActive      int
+	maxIdle        int
+	idleTimeout    time.Duration
+	connectTimeout time.Duration
+	readTimeout    time.Duration
+	writeTimeout   time.Duration
+}
+
 // WithMaxActive configures maximum number of concurrent connections to allow
-func WithMaxActive(v int) func(*valkey.Pool) {
-	return func(vp *valkey.Pool) { vp.MaxActive = v }
+func WithMaxActive(v int) PoolOption {
+	return func(o *poolOptions) { o.maxActive = v }
 }
 
 // WithMaxIdle configures the maximum number of idle connections to keep
-func WithMaxIdle(v int) func(*valkey.Pool) {
-	return func(vp *valkey.Pool) { vp.MaxIdle = v }
+func WithMaxIdle(v int) PoolOption {
+	return func(o *poolOptions) { o.maxIdle = v }
 }
 
 // WithIdleTimeout configures how long to wait before reaping a connection
-func WithIdleTimeout(v time.Duration) func(*valkey.Pool) {
-	return func(vp *valkey.Pool) { vp.IdleTimeout = v }
+func WithIdleTimeout(v time.Duration) PoolOption {
+	return func(o *poolOptions) { o.idleTimeout = v }
+}
+
+// WithConnectTimeout configures how long to wait when dialing a new connection, zero meaning no limit
+func WithConnectTimeout(v time.Duration) PoolOption {
+	return func(o *poolOptions) { o.connectTimeout = v }
+}
+
+// WithReadTimeout configures how long to wait for a reply to a command, zero meaning no limit. Callers which use
+// blocking commands (e.g. BLPOP) must set this higher than the longest time they block for.
+func WithReadTimeout(v time.Duration) PoolOption {
+	return func(o *poolOptions) { o.readTimeout = v }
+}
+
+// WithWriteTimeout configures how long to wait when writing a command, zero meaning no limit
+func WithWriteTimeout(v time.Duration) PoolOption {
+	return func(o *poolOptions) { o.writeTimeout = v }
 }
 
 // NewPool creates a new pool with the given options. The URL takes the form
@@ -30,7 +58,22 @@ func WithIdleTimeout(v time.Duration) func(*valkey.Pool) {
 // is encrypted - valkey:// and redis:// are plaintext, valkeys:// and rediss:// use TLS. If a
 // username is given then credentials are sent as an ACL style AUTH, otherwise as a password only
 // AUTH. The database defaults to 0.
-func NewPool(redisURL string, options ...func(*valkey.Pool)) (*valkey.Pool, error) {
+func NewPool(redisURL string, options ...PoolOption) (*valkey.Pool, error) {
+	opts := &poolOptions{
+		maxActive:   32,
+		maxIdle:     4,
+		idleTimeout: 180 * time.Second,
+
+		// without these a connection which goes half-open, e.g. after a network partition or server failover, blocks
+		// its caller indefinitely, holding its slot in the pool
+		connectTimeout: 5 * time.Second,
+		readTimeout:    10 * time.Second,
+		writeTimeout:   10 * time.Second,
+	}
+	for _, o := range options {
+		o(opts)
+	}
+
 	parsedURL, err := url.Parse(redisURL)
 	if err != nil {
 		return nil, err
@@ -54,7 +97,12 @@ func NewPool(redisURL string, options ...func(*valkey.Pool)) (*valkey.Pool, erro
 	}
 
 	dial := func() (valkey.Conn, error) {
-		conn, err := valkey.Dial("tcp", parsedURL.Host, valkey.DialUseTLS(useTLS))
+		conn, err := valkey.Dial("tcp", parsedURL.Host,
+			valkey.DialUseTLS(useTLS),
+			valkey.DialConnectTimeout(opts.connectTimeout),
+			valkey.DialReadTimeout(opts.readTimeout),
+			valkey.DialWriteTimeout(opts.writeTimeout),
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -69,19 +117,13 @@ func NewPool(redisURL string, options ...func(*valkey.Pool)) (*valkey.Pool, erro
 		return conn, nil
 	}
 
-	vp := &valkey.Pool{
-		MaxActive:   32,
-		MaxIdle:     4,
-		IdleTimeout: 180 * time.Second,
+	return &valkey.Pool{
+		MaxActive:   opts.maxActive,
+		MaxIdle:     opts.maxIdle,
+		IdleTimeout: opts.idleTimeout,
 		Wait:        true, // makes callers wait for a connection
 		Dial:        dial,
-	}
-
-	for _, o := range options {
-		o(vp)
-	}
-
-	return vp, nil
+	}, nil
 }
 
 // initConn authenticates a newly dialed connection if the URL carried credentials, and switches it
