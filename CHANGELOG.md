@@ -1,3 +1,6 @@
+## v0.30.0 (2026-10-20)
+ * Give pools default connect, read and write timeouts, with options to change them
+
 ## v0.29.0 (2026-10-13)
  * Change RateLimiter to take a key base so Allow accepts an id rather than a full key
 
