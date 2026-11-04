@@ -1,3 +1,6 @@
+## v0.31.0 (2026-11-04)
+ * Add Tallies for buffering totals in Valkey and flushing them to a store in batches
+
 ## v0.30.0 (2026-10-20)
  * Give pools default connect, read and write timeouts, with options to change them
 
