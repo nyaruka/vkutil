@@ -10,18 +10,6 @@ import (
 	valkey "github.com/gomodule/redigo/redis"
 )
 
-//go:embed lua/tally_snapshot.lua
-var tallySnapshot string
-var tallySnapshotScript = valkey.NewScript(2, tallySnapshot)
-
-//go:embed lua/tally_batch.lua
-var tallyBatch string
-var tallyBatchScript = valkey.NewScript(3, tallyBatch)
-
-//go:embed lua/tally_done.lua
-var tallyDone string
-var tallyDoneScript = valkey.NewScript(2, tallyDone)
-
 // Tallies buffers totals of things which only go up and flushes them to a store in batches, so that frequent
 // increments cost one store write per field per flush rather than a write each. What a field identifies is up to the
 // caller, e.g. 123|msgs/in@2025-05-04 for the messages received by owner 123 on a day.
@@ -90,19 +78,16 @@ func (t *Tallies) Increment(ctx context.Context, vc valkey.Conn, amounts map[str
 		vc.Send("HINCRBY", t.liveKey(), field, amount)
 	}
 
-	replies, err := valkey.Values(valkey.DoContext(vc, ctx, "EXEC"))
-	if err != nil {
-		return fmt.Errorf("error incrementing tallies: %w", err)
-	}
-
-	// a command failing inside a transaction doesn't fail EXEC, only its own reply
-	for _, reply := range replies {
-		if err, ok := reply.(valkey.Error); ok {
-			return fmt.Errorf("error incrementing tallies: %w", err)
-		}
-	}
-	return nil
+	return execTx(ctx, vc)
 }
+
+//go:embed lua/tally_snapshot.lua
+var tallySnapshot string
+var tallySnapshotScript = valkey.NewScript(2, tallySnapshot)
+
+//go:embed lua/tally_batch.lua
+var tallyBatch string
+var tallyBatchScript = valkey.NewScript(3, tallyBatch)
 
 // Flush writes everything buffered when it starts to the given store in batches of up to batchSize fields, along with
 // anything left by a failed flush, returning the number of fields written. Increments made during a flush are left for
@@ -224,6 +209,10 @@ func (t *Tallies) writeBatch(ctx context.Context, store TallyStore, id int64, kv
 	}
 	return len(amounts), nil
 }
+
+//go:embed lua/tally_done.lua
+var tallyDone string
+var tallyDoneScript = valkey.NewScript(2, tallyDone)
 
 func (t *Tallies) deleteBatch(ctx context.Context, vc valkey.Conn, id int64) error {
 	if _, err := tallyDoneScript.DoContext(ctx, vc, t.batchKey(), t.batchIDKey(), id); err != nil {

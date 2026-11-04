@@ -69,7 +69,7 @@ func TestTalliesIncrement(t *testing.T) {
 	vc.Do("HSET", "{tallies}:live", "foo", "bar")
 
 	err := tl.Increment(ctx, vc, map[string]int64{"foo": 1})
-	assert.EqualError(t, err, "error incrementing tallies: ERR hash value is not an integer")
+	assert.EqualError(t, err, "ERR hash value is not an integer")
 }
 
 func TestTalliesFlush(t *testing.T) {
@@ -80,7 +80,7 @@ func TestTalliesFlush(t *testing.T) {
 	tl := vkutil.NewTallies("tallies")
 	store := newMemoryTallyStore()
 
-	assert.Panics(t, func() { tl.Flush(ctx, vc, store, 0) })
+	assert.PanicsWithValue(t, "flush batch size must be greater than zero", func() { tl.Flush(ctx, vc, store, 0) })
 
 	increment := func(amounts map[string]int64) {
 		require.NoError(t, tl.Increment(ctx, vc, amounts))
@@ -267,14 +267,17 @@ func TestTalliesFlushLargeBatches(t *testing.T) {
 	assert.Len(t, store.totals, 2500)
 }
 
+func TestNewTalliesValidation(t *testing.T) {
+	// a key base which can't be used as a hash tag is a programming error, not a runtime one
+	for _, keyBase := range []string{"", "{foo}", "foo}"} {
+		assert.PanicsWithValue(t, fmt.Sprintf("invalid tallies key base %q", keyBase), func() { vkutil.NewTallies(keyBase) })
+	}
+}
+
 func TestTalliesKeyBases(t *testing.T) {
 	ctx := t.Context()
 	vc := assertvk.ClaimDB(t).Pool().Get()
 	defer vc.Close()
-
-	for _, keyBase := range []string{"", "{foo}", "foo}"} {
-		assert.PanicsWithValue(t, fmt.Sprintf("invalid tallies key base %q", keyBase), func() { vkutil.NewTallies(keyBase) })
-	}
 
 	foo, bar := vkutil.NewTallies("foo"), vkutil.NewTallies("bar")
 	store := newMemoryTallyStore()

@@ -2,7 +2,7 @@
 local liveKey, flushingKey = KEYS[1], KEYS[2]
 
 if redis.call("EXISTS", flushingKey) == 0 and redis.call("EXISTS", liveKey) == 1 then
-    redis.call("RENAME", liveKey, flushingKey)
-    return 1
+	redis.call("RENAME", liveKey, flushingKey)
+	return 1
 end
 return 0
