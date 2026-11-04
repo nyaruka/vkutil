@@ -151,6 +151,18 @@ limiter := vkutil.NewRateLimiter("chat-typing", 30, time.Minute)
 limiter.Allow(ctx, vc, "1234") // true for the first 30 uses in the window, then false
 ```
 
+### Tallies
+
+The `Tallies` type buffers totals of things which only go up and flushes them in batches to a `TallyStore`, such as a
+database table, which records each batch so that none is counted twice:
+
+```go
+tallies := vkutil.NewTallies("tallies")
+tallies.Increment(ctx, vc, map[string]int64{"msgs:in": 1, "123|msgs:in": 1})
+...
+tallies.Flush(ctx, vc, store, 1000) // writes the buffered amounts to the store
+```
+
 ## Testing
 
 ### Database Pool
